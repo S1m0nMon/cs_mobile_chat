@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import StudentView from '@/components/chat/StudentView';
 import OperatorView from '@/components/chat/OperatorView';
-import ApplicationEntryView from '@/components/chat/ApplicationEntryView';
+import StudentPreChat from '@/components/chat/StudentPreChat';
 import { useChat } from '@/hooks/useChat';
 import { Seg, SimType } from '@/lib/types';
 import { SEG_LABELS, SIM_LABELS } from '@/lib/segRequirements';
@@ -23,6 +23,7 @@ export default function ChatPage() {
     waitTimerActive,
     resetCase,
     studentEnterApplicationNumber,
+    studentApplyAndStart,
     studentSubmitItem,
     studentSendMessage,
     operatorSendMessage,
@@ -157,7 +158,10 @@ export default function ChatPage() {
                     />
                   </div>
                 ) : (
-                  <ApplicationEntryView onSubmit={studentEnterApplicationNumber} />
+                  <StudentPreChat
+                    onEnterNumber={studentEnterApplicationNumber}
+                    onApplyAndStart={studentApplyAndStart}
+                  />
                 )}
               </div>
             </div>
@@ -199,7 +203,10 @@ export default function ChatPage() {
                   />
                 </div>
               ) : (
-                <ApplicationEntryView onSubmit={studentEnterApplicationNumber} />
+                <StudentPreChat
+                  onEnterNumber={studentEnterApplicationNumber}
+                  onApplyAndStart={studentApplyAndStart}
+                />
               )}
             </div>
           </div>

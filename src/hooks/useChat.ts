@@ -185,6 +185,72 @@ export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim'
     [addAudit, startWaitTimer]
   );
 
+  /**
+   * Called when the student completes the in-chat application workflow
+   * (no pre-existing application number). Auto-generates an application
+   * number, applies the chosen seg/simType, and starts the chat.
+   */
+  const studentApplyAndStart = useCallback(
+    (seg: Seg, simType: SimType) => {
+      setChatCase((prev) => {
+        if (prev.applicationNumber) return prev; // already started
+
+        // Auto-generated number — client-only path, random is safe.
+        const rand = Math.floor(10000 + Math.random() * 90000);
+        const generated = `HV2026-${rand}`;
+
+        // Rebuild items from selected seg/simType (defaults differ from initial S1/esim)
+        const newDefs = getItemsForSeg(seg, simType);
+        const items: Item[] = newDefs.map((def) => ({
+          ...def,
+          state: 'empty' as const,
+          value: null,
+          file: null,
+          suppReason: null,
+        }));
+        const newStatus = computeCaseStatus(items);
+
+        const segLabel = `${SEG_LABELS[seg]} · ${SIM_LABELS[simType]}`;
+        addAudit(
+          'case.application_entered',
+          `채팅 내 신청 워크플로우 완료 · ${segLabel} · 신청번호 자동 발급: ${generated}`,
+          'student',
+          { applicationNumber: generated, viaWorkflow: true, seg, simType }
+        );
+
+        setTimeout(() => {
+          setMessages([
+            {
+              id: generateId('M'),
+              role: 'bot',
+              type: 'text',
+              text: `신청이 접수되었습니다! 🎉\n신청번호: ${generated}\n선택하신 ${segLabel} 기준으로 필요 서류가 준비되었습니다.\n잠시 후 담당 오퍼레이터가 안내해드릴게요.`,
+              createdAt: nowStr(),
+            },
+            {
+              id: generateId('M'),
+              role: 'system',
+              type: 'system',
+              text: `신청 워크플로우 완료 · ${segLabel} · 오퍼레이터 배정 대기`,
+              createdAt: nowStr(),
+            },
+          ]);
+          startWaitTimer();
+        }, 300);
+
+        return {
+          ...prev,
+          applicationNumber: generated,
+          seg,
+          simType,
+          items,
+          status: newStatus,
+        };
+      });
+    },
+    [addAudit, startWaitTimer]
+  );
+
   const studentSubmitItem = useCallback(
     (code: ItemCode, payload: { value?: string; file?: FileMeta }) => {
       setChatCase((prev) => {
@@ -401,6 +467,7 @@ export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim'
     waitTimerActive,
     resetCase,
     studentEnterApplicationNumber,
+    studentApplyAndStart,
     studentSubmitItem,
     studentSendMessage,
     operatorSendMessage,

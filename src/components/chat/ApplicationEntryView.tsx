@@ -4,9 +4,10 @@ import { useState, useRef, useEffect } from 'react';
 
 interface Props {
   onSubmit: (applicationNumber: string) => void;
+  onStartApplication: () => void;
 }
 
-export default function ApplicationEntryView({ onSubmit }: Props) {
+export default function ApplicationEntryView({ onSubmit, onStartApplication }: Props) {
   const [appNum, setAppNum] = useState('');
   const [error, setError] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -80,11 +81,36 @@ export default function ApplicationEntryView({ onSubmit }: Props) {
           </button>
         </div>
 
+        {/* Divider */}
+        <div className="flex items-center gap-3 my-5">
+          <div className="flex-1 h-px bg-gray-200" />
+          <span className="text-[11px] text-gray-400 font-medium">또는</span>
+          <div className="flex-1 h-px bg-gray-200" />
+        </div>
+
+        {/* Apply route */}
+        <button
+          onClick={onStartApplication}
+          className="w-full p-4 rounded-2xl border-2 border-dashed border-[#1F4E79]/30 bg-[#1F4E79]/5 hover:bg-[#1F4E79]/10 hover:border-[#1F4E79]/50 active:scale-[0.99] transition-all text-left group"
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">✨</span>
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-[#1F4E79]">
+                신청 번호가 없으신가요?
+              </div>
+              <div className="text-[11px] text-gray-500 mt-0.5">
+                채팅에서 바로 간편하게 신청하실 수 있어요.
+              </div>
+            </div>
+            <span className="text-[#1F4E79]/40 group-hover:text-[#1F4E79]/70 transition-colors">›</span>
+          </div>
+        </button>
+
         {/* Help text */}
-        <div className="mt-4 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
-          <p className="text-xs text-blue-700 leading-relaxed">
-            <span className="font-semibold">신청 번호를 모르시나요?</span><br />
-            신청 완료 후 이메일로 발송된 확인서 또는 신청 페이지에서 확인하실 수 있습니다.
+        <div className="mt-4 bg-gray-50 border border-gray-100 rounded-xl px-4 py-2.5">
+          <p className="text-[11px] text-gray-500 leading-relaxed">
+            <span className="font-semibold text-gray-600">신청 번호를 잊으셨나요?</span> 신청 완료 시 이메일로 발송된 확인서에서 확인하실 수 있습니다.
           </p>
         </div>
       </div>
