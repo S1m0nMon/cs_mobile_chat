@@ -35,16 +35,6 @@ const SCRIPT = {
     `이용 중 불편하신 사항은 언제든지 채팅으로 문의해 주세요.`,
 };
 
-function buildInitialItems(seg: Seg, simType: SimType): Item[] {
-  return getItemsForSeg(seg, simType).map((def) => ({
-    ...def,
-    state: 'empty' as const,
-    value: null,
-    file: null,
-    suppReason: null,
-  }));
-}
-
 function buildNewCase(seg: Seg, simType: SimType, counter: number): Case {
   // Use counter % length for deterministic student selection (no Math.random during SSR)
   const student = DEMO_STUDENTS[counter % DEMO_STUDENTS.length];
@@ -156,17 +146,14 @@ export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim'
       stopWaitTimer();
       counterRef.current += 1;
       const t = nowStr();
+      // Header seg/simType are just defaults — operator still confirms after student enters number.
+      // segConfirmed stays false, items stay [] until operator confirms via the seg confirmation card.
       const fresh = buildNewCase(seg, simType, counterRef.current);
-      // Operator explicitly chose seg via header — build items and confirm seg immediately
-      const items = buildInitialItems(seg, simType);
-      const initStatus = computeCaseStatus(items);
-      // applicationNumber is '' in fresh — student will enter it on the entry screen
-      setChatCase({ ...fresh, items, status: initStatus, queueEnteredAt: t, createdAt: t, segConfirmed: true });
+      setChatCase({ ...fresh, queueEnteredAt: t, createdAt: t });
       setMessages([]);
       setAuditLogs([
         { id: generateId('AL'), action: 'case.created', actorRole: 'system', text: `케이스 생성 · 신청번호 입력 대기 · ${fresh.id}`, createdAt: t },
       ]);
-      // No welcome messages — fires when student enters application number
     },
     [stopWaitTimer]
   );
