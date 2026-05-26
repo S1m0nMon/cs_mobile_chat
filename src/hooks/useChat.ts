@@ -33,6 +33,7 @@ function buildNewCase(seg: Seg, simType: SimType, counter: number): Case {
   const student = DEMO_STUDENTS[counter % DEMO_STUDENTS.length];
   return {
     id: `C-2026-${String(counter).padStart(5, '0')}`,
+    applicationNumber: '',    // set when student enters it on the entry screen
     studentName: student.name,
     studentSchool: student.school,
     studentCountry: student.country,
@@ -63,24 +64,15 @@ export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim'
   const [waitTimerActive, setWaitTimerActive] = useState(false);
 
   // ── Client-only init (fix SSR hydration mismatch) ─────────────────────────
-  // Timestamps and initial messages are only set on the client after mount.
+  // Timestamps are set on the client after mount. Welcome messages are NOT sent
+  // here — they fire when the student enters their application number.
   useEffect(() => {
     const t = nowStr();
     setChatCase((prev) => ({ ...prev, queueEnteredAt: t, createdAt: t }));
     setAuditLogs([
-      { id: generateId('AL'), action: 'case.seg_assigned', actorRole: 'system', text: `Seg ${SEG_LABELS[initialSeg]} · ${SIM_LABELS[initialSimType]} 자동 부여 (신청 완료 시)`, createdAt: t },
-      { id: generateId('AL'), action: 'case.created', actorRole: 'system', text: `케이스 생성`, createdAt: t },
+      { id: generateId('AL'), action: 'case.created', actorRole: 'system', text: `케이스 생성 · 신청번호 입력 대기`, createdAt: t },
     ]);
-    setTimeout(() => {
-      setChatCase((prev) => {
-        setMessages([
-          { id: generateId('M'), role: 'bot', type: 'text', text: `안녕하세요 ${prev.studentName}님! 👋\n모바일 개통 신청이 접수되었습니다.\n담당 오퍼레이터가 서류를 검토 중입니다. 잠시만 기다려주세요.`, createdAt: nowStr() },
-          { id: generateId('M'), role: 'system', type: 'system', text: `${SEG_LABELS[initialSeg]} · ${SIM_LABELS[initialSimType]} 분류 완료 · 큐 진입`, createdAt: nowStr() },
-        ]);
-        return prev;
-      });
-    }, 300);
-    // mounted
+    // mounted — no welcome messages yet; fires when student submits application number
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // intentionally empty — run once on mount
 
@@ -147,25 +139,51 @@ export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim'
       const t = nowStr();
       const fresh = buildNewCase(seg, simType, counterRef.current);
       const initStatus = computeCaseStatus(fresh.items);
+      // applicationNumber is '' in fresh — student will enter it on the entry screen
       setChatCase({ ...fresh, status: initStatus, queueEnteredAt: t, createdAt: t });
       setMessages([]);
       setAuditLogs([
-        { id: generateId('AL'), action: 'case.seg_assigned', actorRole: 'system', text: `Seg ${SEG_LABELS[seg]} · ${SIM_LABELS[simType]} 자동 부여 (신청 완료 시)`, createdAt: t },
-        { id: generateId('AL'), action: 'case.created', actorRole: 'system', text: `케이스 생성 · ${fresh.id}`, createdAt: t },
+        { id: generateId('AL'), action: 'case.created', actorRole: 'system', text: `케이스 생성 · 신청번호 입력 대기 · ${fresh.id}`, createdAt: t },
       ]);
-
-      setTimeout(() => {
-        setMessages([
-          { id: generateId('M'), role: 'bot', type: 'text', text: `안녕하세요 ${fresh.studentName}님! 👋\n모바일 개통 신청이 접수되었습니다.\n담당 오퍼레이터가 서류를 검토 중입니다. 잠시만 기다려주세요.`, createdAt: nowStr() },
-          { id: generateId('M'), role: 'system', type: 'system', text: `${SEG_LABELS[seg]} · ${SIM_LABELS[simType]} 분류 완료 · 큐 진입`, createdAt: nowStr() },
-        ]);
-        startWaitTimer();
-      }, 300);
+      // No welcome messages — fires when student enters application number
     },
-    [stopWaitTimer, startWaitTimer]
+    [stopWaitTimer]
   );
 
   // ── Student actions ─────────────────────────────────────────────────────────
+
+  /** Called when the student submits their application number on the entry screen. */
+  const studentEnterApplicationNumber = useCallback(
+    (appNum: string) => {
+      const trimmed = appNum.trim().toUpperCase();
+      if (!trimmed) return;
+      setChatCase((prev) => {
+        if (prev.applicationNumber) return prev; // guard — already entered
+        addAudit('case.application_entered', `신청번호 입력: ${trimmed} · 채팅 시작`, 'student', { applicationNumber: trimmed });
+        setTimeout(() => {
+          setMessages([
+            {
+              id: generateId('M'),
+              role: 'bot',
+              type: 'text',
+              text: `안녕하세요! 👋\n신청번호 ${trimmed}가 확인되었습니다.\n잠시 후 담당 오퍼레이터가 필요 서류를 안내해드릴게요.`,
+              createdAt: nowStr(),
+            },
+            {
+              id: generateId('M'),
+              role: 'system',
+              type: 'system',
+              text: `신청번호 ${trimmed} 인증 완료 · 오퍼레이터 배정 대기`,
+              createdAt: nowStr(),
+            },
+          ]);
+          startWaitTimer();
+        }, 300);
+        return { ...prev, applicationNumber: trimmed };
+      });
+    },
+    [addAudit, startWaitTimer]
+  );
 
   const studentSubmitItem = useCallback(
     (code: ItemCode, payload: { value?: string; file?: FileMeta }) => {
@@ -382,6 +400,7 @@ export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim'
     auditLogs,
     waitTimerActive,
     resetCase,
+    studentEnterApplicationNumber,
     studentSubmitItem,
     studentSendMessage,
     operatorSendMessage,

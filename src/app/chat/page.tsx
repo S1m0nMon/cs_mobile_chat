@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import StudentView from '@/components/chat/StudentView';
 import OperatorView from '@/components/chat/OperatorView';
+import ApplicationEntryView from '@/components/chat/ApplicationEntryView';
 import { useChat } from '@/hooks/useChat';
 import { Seg, SimType } from '@/lib/types';
 import { SEG_LABELS, SIM_LABELS } from '@/lib/segRequirements';
@@ -21,6 +22,7 @@ export default function ChatPage() {
     auditLogs,
     waitTimerActive,
     resetCase,
+    studentEnterApplicationNumber,
     studentSubmitItem,
     studentSendMessage,
     operatorSendMessage,
@@ -133,21 +135,33 @@ export default function ChatPage() {
       <main className="flex-1 min-h-0 overflow-hidden">
         {view === 'split' && (
           <div className="h-full grid grid-cols-[1fr_1.4fr] gap-px bg-gray-200">
+            {/* Student panel */}
             <div className="bg-gray-50 flex flex-col overflow-hidden">
               <div className="bg-white border-b border-gray-200 px-4 py-2 flex justify-between items-center flex-shrink-0">
                 <span className="text-xs font-medium text-gray-500">📱 학생 시점</span>
-                <span className="text-[11px] text-gray-400">{chatCase.studentName} · {chatCase.studentSchool}</span>
+                {chatCase.applicationNumber ? (
+                  <span className="text-[11px] text-gray-400 font-mono">{chatCase.applicationNumber}</span>
+                ) : (
+                  <span className="text-[11px] text-amber-500 font-medium">신청번호 입력 대기</span>
+                )}
               </div>
-              <div className="flex-1 min-h-0 overflow-hidden p-3">
-                <StudentView
-                  chatCase={chatCase}
-                  messages={messages}
-                  onSubmitItem={studentSubmitItem}
-                  onSendMessage={studentSendMessage}
-                  waitTimerActive={waitTimerActive}
-                />
+              <div className="flex-1 min-h-0 overflow-hidden">
+                {chatCase.applicationNumber ? (
+                  <div className="h-full p-3">
+                    <StudentView
+                      chatCase={chatCase}
+                      messages={messages}
+                      onSubmitItem={studentSubmitItem}
+                      onSendMessage={studentSendMessage}
+                      waitTimerActive={waitTimerActive}
+                    />
+                  </div>
+                ) : (
+                  <ApplicationEntryView onSubmit={studentEnterApplicationNumber} />
+                )}
               </div>
             </div>
+            {/* Operator panel */}
             <div className="bg-gray-50 flex flex-col overflow-hidden">
               <OperatorView
                 chatCase={chatCase}
@@ -167,19 +181,26 @@ export default function ChatPage() {
 
         {view === 'student' && (
           <div className="h-full bg-gray-50 flex flex-col overflow-hidden">
-            <div className="bg-white border-b border-gray-200 px-4 py-2 flex-shrink-0">
-              <span className="text-xs font-medium text-gray-500">
-                📱 학생 시점 · {chatCase.studentName} · {chatCase.studentSchool}
-              </span>
+            <div className="bg-white border-b border-gray-200 px-4 py-2 flex-shrink-0 flex justify-between items-center">
+              <span className="text-xs font-medium text-gray-500">📱 학생 시점</span>
+              {chatCase.applicationNumber && (
+                <span className="text-[11px] text-gray-400 font-mono">{chatCase.applicationNumber}</span>
+              )}
             </div>
-            <div className="flex-1 min-h-0 overflow-hidden p-4">
-              <StudentView
-                chatCase={chatCase}
-                messages={messages}
-                onSubmitItem={studentSubmitItem}
-                onSendMessage={studentSendMessage}
-                waitTimerActive={waitTimerActive}
-              />
+            <div className="flex-1 min-h-0 overflow-hidden">
+              {chatCase.applicationNumber ? (
+                <div className="h-full p-4">
+                  <StudentView
+                    chatCase={chatCase}
+                    messages={messages}
+                    onSubmitItem={studentSubmitItem}
+                    onSendMessage={studentSendMessage}
+                    waitTimerActive={waitTimerActive}
+                  />
+                </div>
+              ) : (
+                <ApplicationEntryView onSubmit={studentEnterApplicationNumber} />
+              )}
             </div>
           </div>
         )}

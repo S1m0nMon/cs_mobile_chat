@@ -82,6 +82,7 @@ export interface Message {
 
 export type AuditAction =
   | 'case.created'
+  | 'case.application_entered'
   | 'case.seg_assigned'
   | 'case.seg_changed'
   | 'case.status_changed'
@@ -105,6 +106,8 @@ export interface AuditLog {
 
 export interface Case {
   id: string;
+  /** Filled in when the student types their application number. Empty string = pre-chat (entry screen). */
+  applicationNumber: string;
   studentName: string;
   studentSchool: string;
   studentCountry: string;

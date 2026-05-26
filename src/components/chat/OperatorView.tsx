@@ -103,12 +103,33 @@ export default function OperatorView({
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
+
+        {/* ── Waiting banner: shown until student enters application number ── */}
+        {!chatCase.applicationNumber && !chatCase.closed && (
+          <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+            <span className="text-amber-500 text-lg flex-shrink-0 animate-pulse">⏳</span>
+            <div>
+              <p className="text-sm font-semibold text-amber-800">학생이 신청번호 입력 대기 중</p>
+              <p className="text-xs text-amber-600 mt-0.5">
+                학생이 채팅 페이지에서 신청번호를 입력하면 채팅이 시작됩니다.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Case Info + Seg/Status */}
         <div className="grid grid-cols-2 gap-3">
           {/* Case Info */}
           <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
             <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">케이스 정보</h3>
             <dl className="space-y-1.5 text-sm">
+              {/* Application number — highlighted row */}
+              <div className="flex gap-2">
+                <dt className="text-gray-400 w-20 flex-shrink-0">신청번호</dt>
+                <dd className={`font-mono font-semibold break-all ${chatCase.applicationNumber ? 'text-[#1F4E79]' : 'text-amber-500 italic'}`}>
+                  {chatCase.applicationNumber || '입력 대기 중'}
+                </dd>
+              </div>
               {([
                 ['학생', `${chatCase.studentName} (${chatCase.studentCountry})`],
                 ['학교', chatCase.studentSchool],
@@ -284,13 +305,13 @@ export default function OperatorView({
               value={opText}
               onChange={(e) => setOpText(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleSend(); }}
-              placeholder="자유 채팅 (Status 변경 없음)..."
-              disabled={chatCase.closed || !chatCase.status}
+              placeholder={!chatCase.applicationNumber ? '학생 신청번호 입력 대기 중...' : '자유 채팅 (Status 변경 없음)...'}
+              disabled={chatCase.closed || !chatCase.applicationNumber}
               className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#1F4E79] disabled:bg-gray-100 disabled:cursor-not-allowed"
             />
             <button
               onClick={handleSend}
-              disabled={chatCase.closed || !opText.trim() || !chatCase.status}
+              disabled={chatCase.closed || !opText.trim() || !chatCase.applicationNumber}
               className="px-4 py-2 bg-[#1F4E79] text-white rounded-lg text-sm font-medium hover:bg-[#163a5c] disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
             >
               전송
