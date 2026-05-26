@@ -1,98 +1,72 @@
-import { ItemDefinition, Seg } from './types';
+import { ItemDefinition, ItemCode, Seg, SimType } from './types';
+import segmentsJson from '../../config/segments.json';
 
-export const SEG_REQUIREMENTS: Record<Seg, ItemDefinition[]> = {
-  S1: [
-    {
-      code: 'passport_info',
-      name: '여권 정보면',
-      icon: '📘',
-      type: 'file',
-      hint: '이름·사진·여권번호·만료일이 보이는 면',
-    },
-    {
-      code: 'passport_visa',
-      name: '여권 비자면',
-      icon: '🛂',
-      type: 'file',
-      hint: '비자 도장이 있는 면',
-    },
-    {
-      code: 'activation_date',
-      name: '개통 희망일',
-      icon: '📅',
-      type: 'date',
-      hint: '오늘 이후 날짜 선택',
-    },
-    {
-      code: 'sim_type',
-      name: 'SIM 종류',
-      icon: '📶',
-      type: 'select',
-      options: ['uSIM (실물 SIM)', 'eSIM (디지털 SIM)'],
-    },
-    {
-      code: 'device_model',
-      name: '기기 모델명',
-      icon: '📱',
-      type: 'text',
-      placeholder: '예: iPhone 15 Pro',
-      hint: '제조사/모델명',
-      validate: (v) => v.trim().length > 0,
-      validateMsg: '모델명을 입력해주세요.',
-    },
-    {
-      code: 'imei',
-      name: 'IMEI (15자리)',
-      icon: '🔢',
-      type: 'text',
-      placeholder: '15자리 숫자',
-      hint: '*#06# 으로 확인 가능',
-      validate: (v) => /^\d{15}$/.test(v.replace(/[\s-]/g, '')),
-      validateMsg: '15자리 숫자여야 합니다.',
-    },
-  ],
-  S2: [
-    {
-      code: 'passport_info',
-      name: '여권 정보면',
-      icon: '📘',
-      type: 'file',
-      hint: '이름·사진·여권번호·만료일이 보이는 면',
-    },
-    {
-      code: 'passport_visa',
-      name: '여권 비자면',
-      icon: '🛂',
-      type: 'file',
-      hint: '비자 도장이 있는 면',
-    },
-    {
-      code: 'current_number',
-      name: '현재 사용 번호',
-      icon: '📞',
-      type: 'text',
-      placeholder: '010-XXXX-XXXX',
-      validate: (v) => /^01[0-9]-?\d{3,4}-?\d{4}$/.test(v),
-      validateMsg: '한국 휴대폰 형식이 아닙니다.',
-    },
-    {
-      code: 'current_carrier',
-      name: '기존 통신사',
-      icon: '🏢',
-      type: 'select',
-      options: ['SKT', 'KT', 'LG U+', '알뜰폰'],
-    },
-    {
-      code: 'mnp_consent',
-      name: 'MNP 동의서',
-      icon: '📄',
-      type: 'file',
-      hint: '서명된 MNP 동의서 사진/PDF',
-    },
-  ],
+// ── Type helpers ──────────────────────────────────────────────────────────────
+
+type JsonItemDef = {
+  code: string;
+  name: string;
+  icon: string;
+  type: string;
+  hint?: string;
+  placeholder?: string;
+  options?: string[];
+  validate?: string;
+  validateMsg?: string;
+  suppCategories?: string[];
 };
 
+type SegmentsJson = typeof segmentsJson;
+
+// Built-in validators referenced by key in JSON
+const VALIDATORS: Record<string, (v: string) => boolean> = {
+  phone_kr: (v) => /^01[0-9]-?\d{3,4}-?\d{4}$/.test(v),
+};
+
+function jsonToItemDef(raw: JsonItemDef): ItemDefinition {
+  const def: ItemDefinition = {
+    code: raw.code as ItemCode,
+    name: raw.name,
+    icon: raw.icon,
+    type: raw.type as ItemDefinition['type'],
+    hint: raw.hint,
+    placeholder: raw.placeholder,
+    options: raw.options,
+    suppCategories: raw.suppCategories,
+  };
+  if (raw.validate && VALIDATORS[raw.validate]) {
+    def.validate = VALIDATORS[raw.validate];
+    def.validateMsg = raw.validateMsg;
+  }
+  return def;
+}
+
+const allDefs = segmentsJson.itemDefinitions as Record<string, JsonItemDef>;
+const supplementDefs = segmentsJson.supplementOnlyItems as Record<string, JsonItemDef>;
+
+// ── Public API ─────────────────────────────────────────────────────────────────
+
+export function getItemsForSeg(seg: Seg, simType: SimType): ItemDefinition[] {
+  const segConfig = segmentsJson.segments[seg];
+  const itemCodes = [
+    ...segConfig.commonItems,
+    ...(simType === 'esim' ? segConfig.esimItems : segConfig.usimItems),
+  ];
+  return itemCodes.map((code) => jsonToItemDef(allDefs[code]));
+}
+
+export function getSupplementOnlyItem(code: string): ItemDefinition {
+  return jsonToItemDef(supplementDefs[code]);
+}
+
+export const VISA_CONFIRM_DEF = getSupplementOnlyItem('visa_confirm');
+
 export const SEG_LABELS: Record<Seg, string> = {
-  S1: 'S1 신규개통·여권',
-  S2: 'S2 MNP·여권',
+  S1: segmentsJson.segments.S1.label,
+  S2: segmentsJson.segments.S2.label,
+};
+
+export const SIM_LABELS: Record<SimType, string> = {
+  esim: 'eSIM (디지털 SIM)',
+  usim: 'uSIM (실물 SIM)',
 };

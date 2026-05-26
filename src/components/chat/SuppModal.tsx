@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { SUPP_CATEGORIES } from '@/lib/suppCategories';
+import { getSuppCategories } from '@/lib/suppCategories';
 import { Item, ItemCode } from '@/lib/types';
 
 interface Props {
@@ -13,7 +13,7 @@ interface Props {
 const CUSTOM_KEY = '__custom__';
 
 export default function SuppModal({ item, onClose, onSubmit }: Props) {
-  const cats = SUPP_CATEGORIES[item.code as ItemCode] ?? [];
+  const cats = getSuppCategories(item.code as ItemCode);
   const [category, setCategory] = useState(cats[0] ?? CUSTOM_KEY);
   const [detail, setDetail] = useState('');
   const [error, setError] = useState('');
@@ -55,7 +55,7 @@ export default function SuppModal({ item, onClose, onSubmit }: Props) {
           <textarea
             value={detail}
             onChange={(e) => { setDetail(e.target.value); setError(''); }}
-            placeholder="예: 만료일이 보이도록 정면에서 다시 촬영 부탁드립니다."
+            placeholder="예: 양면이 모두 보이도록 재스캔 후 제출 부탁드립니다."
             rows={3}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-[#1F4E79]"
           />
@@ -63,16 +63,10 @@ export default function SuppModal({ item, onClose, onSubmit }: Props) {
           {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
 
           <div className="flex gap-2 mt-4">
-            <button
-              onClick={onClose}
-              className="flex-1 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200 transition-colors"
-            >
+            <button onClick={onClose} className="flex-1 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200 transition-colors">
               취소
             </button>
-            <button
-              onClick={handleSubmit}
-              className="flex-1 py-2 rounded-lg bg-[#1F4E79] text-white text-sm font-medium hover:bg-[#163a5c] transition-colors"
-            >
+            <button onClick={handleSubmit} className="flex-1 py-2 rounded-lg bg-[#1F4E79] text-white text-sm font-medium hover:bg-[#163a5c] transition-colors">
               보완 요청 보내기
             </button>
           </div>

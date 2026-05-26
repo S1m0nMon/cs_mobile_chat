@@ -2,8 +2,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { computeCaseStatus } from '@/lib/computeStatus';
-import { SEG_REQUIREMENTS } from '@/lib/segRequirements';
-import { SUPP_CATEGORIES } from '@/lib/suppCategories';
+import { getItemsForSeg, VISA_CONFIRM_DEF, SEG_LABELS, SIM_LABELS } from '@/lib/segRequirements';
 import {
   AuditLog,
   Case,
@@ -14,6 +13,7 @@ import {
   ItemCode,
   Message,
   Seg,
+  SimType,
 } from '@/lib/types';
 import { DEMO_STUDENTS, generateId, nowStr } from '@/lib/utils';
 
@@ -21,8 +21,8 @@ const WAIT_TIMER_MS = 60 * 1000; // 1 minute
 
 let caseCounter = 0;
 
-function buildInitialItems(seg: Seg): Item[] {
-  return SEG_REQUIREMENTS[seg].map((def) => ({
+function buildInitialItems(seg: Seg, simType: SimType): Item[] {
+  return getItemsForSeg(seg, simType).map((def) => ({
     ...def,
     state: 'empty' as const,
     value: null,
@@ -31,7 +31,7 @@ function buildInitialItems(seg: Seg): Item[] {
   }));
 }
 
-function buildNewCase(seg: Seg): Case {
+function buildNewCase(seg: Seg, simType: SimType): Case {
   caseCounter++;
   const student = DEMO_STUDENTS[Math.floor(Math.random() * DEMO_STUDENTS.length)];
   return {
@@ -40,18 +40,22 @@ function buildNewCase(seg: Seg): Case {
     studentSchool: student.school,
     studentCountry: student.country,
     seg,
+    simType,
     status: null,
     closed: false,
     rounds: 0,
-    items: buildInitialItems(seg),
+    items: buildInitialItems(seg, simType),
     queueEnteredAt: nowStr(),
     assignedOperator: 'OP-001 (김지수)',
     createdAt: nowStr(),
   };
 }
 
-export function useChat(initialSeg: Seg = 'S1') {
-  const [chatCase, setChatCase] = useState<Case>(() => buildNewCase(initialSeg));
+export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim') {
+  const [chatCase, setChatCase] = useState<Case>(() => {
+    const c = buildNewCase(initialSeg, initialSimType);
+    return { ...c, status: computeCaseStatus(c.items) };
+  });
   const [messages, setMessages] = useState<Message[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const waitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -60,62 +64,31 @@ export function useChat(initialSeg: Seg = 'S1') {
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   const addAudit = useCallback(
-    (action: AuditLog['action'], text: string, payload?: Record<string, unknown>) => {
+    (action: AuditLog['action'], text: string, actorRole: AuditLog['actorRole'] = 'operator', payload?: Record<string, unknown>) => {
       setAuditLogs((prev) => [
-        {
-          id: generateId('AL'),
-          action,
-          actorRole: 'operator',
-          text,
-          payload,
-          createdAt: nowStr(),
-        },
+        { id: generateId('AL'), action, actorRole, text, payload, createdAt: nowStr() },
         ...prev,
       ]);
     },
     []
   );
 
-  const addSystemAudit = useCallback(
-    (action: AuditLog['action'], text: string, payload?: Record<string, unknown>) => {
-      setAuditLogs((prev) => [
-        {
-          id: generateId('AL'),
-          action,
-          actorRole: 'system',
-          text,
-          payload,
-          createdAt: nowStr(),
-        },
-        ...prev,
-      ]);
-    },
-    []
-  );
-
-  const pushMessage = useCallback(
-    (msg: Omit<Message, 'id' | 'createdAt'>) => {
-      const full: Message = { ...msg, id: generateId('M'), createdAt: nowStr() };
-      setMessages((prev) => [...prev, full]);
-      return full;
-    },
-    []
-  );
+  const pushMessage = useCallback((msg: Omit<Message, 'id' | 'createdAt'>) => {
+    const full: Message = { ...msg, id: generateId('M'), createdAt: nowStr() };
+    setMessages((prev) => [...prev, full]);
+    return full;
+  }, []);
 
   const pushSystemMessage = useCallback(
-    (text: string, isWarn = false) => {
-      return pushMessage({ role: 'system', type: 'system', text, isWarn });
-    },
+    (text: string, isWarn = false) => pushMessage({ role: 'system', type: 'system', text, isWarn }),
     [pushMessage]
   );
 
   // ── Wait timer ──────────────────────────────────────────────────────────────
 
   const stopWaitTimer = useCallback(() => {
-    if (waitTimerRef.current) {
-      clearTimeout(waitTimerRef.current);
-      waitTimerRef.current = null;
-    }
+    if (waitTimerRef.current) clearTimeout(waitTimerRef.current);
+    waitTimerRef.current = null;
     setWaitTimerActive(false);
   }, []);
 
@@ -126,7 +99,6 @@ export function useChat(initialSeg: Seg = 'S1') {
       setWaitTimerActive(false);
       setChatCase((prev) => {
         if (prev.closed) return prev;
-        // fire timer — push auto message
         setMessages((msgs) => [
           ...msgs,
           {
@@ -137,68 +109,26 @@ export function useChat(initialSeg: Seg = 'S1') {
             createdAt: nowStr(),
           },
         ]);
-        setAuditLogs((logs) => [
-          {
-            id: generateId('AL'),
-            action: 'wait_timer.fired',
-            actorRole: 'system',
-            text: '1분 무응답 자동 안내 메시지 발송',
-            createdAt: nowStr(),
-          },
-          ...logs,
-        ]);
+        addAudit('wait_timer.fired', '1분 무응답 자동 안내 메시지 발송', 'system');
         return prev;
       });
     }, WAIT_TIMER_MS);
-  }, [stopWaitTimer]);
-
-  // ── Status recompute ────────────────────────────────────────────────────────
-
-  const recomputeStatus = useCallback(
-    (items: Item[], currentStatus: CaseStatus | null, triggerLabel: string) => {
-      const newStatus = computeCaseStatus(items);
-      if (newStatus !== currentStatus) {
-        addSystemAudit('case.status_changed', `Status ${currentStatus ?? '초기'} → ${newStatus} (${triggerLabel})`, {
-          from: currentStatus,
-          to: newStatus,
-          trigger: triggerLabel,
-        });
-      }
-      return newStatus;
-    },
-    [addSystemAudit]
-  );
+  }, [stopWaitTimer, addAudit]);
 
   // ── Case reset ──────────────────────────────────────────────────────────────
 
   const resetCase = useCallback(
-    (seg: Seg) => {
+    (seg: Seg, simType: SimType) => {
       stopWaitTimer();
-      const fresh = buildNewCase(seg);
-      setChatCase(fresh);
+      const fresh = buildNewCase(seg, simType);
+      const initStatus = computeCaseStatus(fresh.items);
+      setChatCase({ ...fresh, status: initStatus });
       setMessages([]);
       setAuditLogs([
-        {
-          id: generateId('AL'),
-          action: 'case.created',
-          actorRole: 'system',
-          text: `케이스 생성 · Seg ${seg} 자동 부여`,
-          createdAt: nowStr(),
-        },
-        {
-          id: generateId('AL'),
-          action: 'case.seg_assigned',
-          actorRole: 'system',
-          text: `Seg 자동 부여: ${seg} (신청 완료 시 자동)`,
-          createdAt: nowStr(),
-        },
+        { id: generateId('AL'), action: 'case.seg_assigned', actorRole: 'system', text: `Seg ${SEG_LABELS[seg]} · ${SIM_LABELS[simType]} 자동 부여 (신청 완료 시)`, createdAt: nowStr() },
+        { id: generateId('AL'), action: 'case.created', actorRole: 'system', text: `케이스 생성 · ${fresh.id}`, createdAt: nowStr() },
       ]);
-      // Initial status
-      const initItems = buildInitialItems(seg);
-      const initStatus = computeCaseStatus(initItems);
-      setChatCase((prev) => ({ ...prev, status: initStatus }));
 
-      // Welcome bot message
       setTimeout(() => {
         setMessages([
           {
@@ -212,7 +142,7 @@ export function useChat(initialSeg: Seg = 'S1') {
             id: generateId('M'),
             role: 'system',
             type: 'system',
-            text: `Seg ${seg} 자동 분류 완료 · 큐 진입`,
+            text: `${SEG_LABELS[seg]} · ${SIM_LABELS[simType]} 분류 완료 · 큐 진입`,
             createdAt: nowStr(),
           },
         ]);
@@ -231,10 +161,9 @@ export function useChat(initialSeg: Seg = 'S1') {
         const items = prev.items.map((item) => {
           if (item.code !== code) return item;
           const wasSupp = item.state === 'supp_requested';
-          const newState = wasSupp ? ('resubmitted' as const) : ('submitted' as const);
           return {
             ...item,
-            state: newState,
+            state: (wasSupp ? 'resubmitted' : 'submitted') as Item['state'],
             value: payload.value !== undefined ? payload.value : item.value,
             file: payload.file !== undefined ? payload.file : item.file,
             suppReason: wasSupp ? null : item.suppReason,
@@ -246,54 +175,28 @@ export function useChat(initialSeg: Seg = 'S1') {
         const updatedItem = items.find((i) => i.code === code)!;
         const isResubmit = updatedItem.state === 'resubmitted';
 
-        // push system message
         setMessages((msgs) => [
           ...msgs,
-          {
-            id: generateId('M'),
-            role: 'system',
-            type: 'system',
-            text: `📤 ${updatedItem.name} ${isResubmit ? '재제출됨' : '제출됨'}`,
-            createdAt: nowStr(),
-          },
+          { id: generateId('M'), role: 'system', type: 'system', text: `📤 ${updatedItem.name} ${isResubmit ? '재제출됨' : '제출됨'}`, createdAt: nowStr() },
         ]);
-
-        setAuditLogs((logs) => [
-          {
-            id: generateId('AL'),
-            action: isResubmit ? 'item.resubmitted' : 'item.submitted',
-            actorRole: 'student',
-            text: `학생: ${updatedItem.name} ${isResubmit ? '재제출' : '제출'}`,
-            createdAt: nowStr(),
-          },
-          ...logs,
-        ]);
+        addAudit(isResubmit ? 'item.resubmitted' : 'item.submitted', `학생: ${updatedItem.name} ${isResubmit ? '재제출' : '제출'}`, 'student');
 
         const newStatus = computeCaseStatus(items);
         if (newStatus !== prev.status) {
-          setAuditLogs((logs) => [
-            {
-              id: generateId('AL'),
-              action: 'case.status_changed',
-              actorRole: 'system',
-              text: `Status ${prev.status ?? '초기'} → ${newStatus}`,
-              createdAt: nowStr(),
-            },
-            ...logs,
-          ]);
+          addAudit('case.status_changed', `Status ${prev.status ?? '초기'} → ${newStatus}`, 'system', { from: prev.status, to: newStatus });
         }
         return { ...prev, items, status: newStatus };
       });
       startWaitTimer();
     },
-    [startWaitTimer]
+    [startWaitTimer, addAudit]
   );
 
   const studentSendMessage = useCallback(
     (text: string) => {
       if (!text.trim()) return;
       pushMessage({ role: 'student', type: 'text', text: text.trim() });
-      addAudit('message.sent', `학생 메시지 전송 (자유 채팅)`);
+      addAudit('message.sent', '학생 메시지 전송', 'student');
       startWaitTimer();
     },
     [pushMessage, addAudit, startWaitTimer]
@@ -305,7 +208,7 @@ export function useChat(initialSeg: Seg = 'S1') {
     (text: string) => {
       if (!text.trim()) return;
       pushMessage({ role: 'operator', type: 'text', text: text.trim() });
-      addAudit('message.sent', `오퍼레이터 메시지 전송`);
+      addAudit('message.sent', '오퍼레이터 메시지 전송');
       stopWaitTimer();
     },
     [pushMessage, addAudit, stopWaitTimer]
@@ -324,7 +227,6 @@ export function useChat(initialSeg: Seg = 'S1') {
         const suppItem = items.find((i) => i.code === code)!;
         const newRounds = prev.rounds + 1;
 
-        // template message
         setMessages((msgs) => [
           ...msgs,
           {
@@ -338,37 +240,17 @@ export function useChat(initialSeg: Seg = 'S1') {
             createdAt: nowStr(),
           },
         ]);
-
-        setAuditLogs((logs) => [
-          {
-            id: generateId('AL'),
-            action: 'item.supp_requested',
-            actorRole: 'operator',
-            text: `📨 보완 요청 (라운드 ${newRounds}): ${suppItem.name} · ${reason}`,
-            payload: { itemCode: code, category, detail, round: newRounds },
-            createdAt: nowStr(),
-          },
-          ...logs,
-        ]);
+        addAudit('item.supp_requested', `📨 보완 요청 (라운드 ${newRounds}): ${suppItem.name} · ${reason}`, 'operator', { itemCode: code, round: newRounds });
 
         const newStatus = computeCaseStatus(items);
         if (newStatus !== prev.status) {
-          setAuditLogs((logs) => [
-            {
-              id: generateId('AL'),
-              action: 'case.status_changed',
-              actorRole: 'system',
-              text: `Status ${prev.status} → ${newStatus}`,
-              createdAt: nowStr(),
-            },
-            ...logs,
-          ]);
+          addAudit('case.status_changed', `Status ${prev.status} → ${newStatus}`, 'system');
         }
         return { ...prev, items, rounds: newRounds, status: newStatus };
       });
       stopWaitTimer();
     },
-    [stopWaitTimer]
+    [addAudit, stopWaitTimer]
   );
 
   const operatorApproveItem = useCallback(
@@ -382,83 +264,87 @@ export function useChat(initialSeg: Seg = 'S1') {
 
         setMessages((msgs) => [
           ...msgs,
-          {
-            id: generateId('M'),
-            role: 'system',
-            type: 'system',
-            text: `✅ ${approvedItem.name} 승인됨`,
-            createdAt: nowStr(),
-          },
+          { id: generateId('M'), role: 'system', type: 'system', text: `✅ ${approvedItem.name} 승인됨`, createdAt: nowStr() },
         ]);
-
-        setAuditLogs((logs) => [
-          {
-            id: generateId('AL'),
-            action: 'item.approved',
-            actorRole: 'operator',
-            text: `✅ 항목 승인: ${approvedItem.name}`,
-            createdAt: nowStr(),
-          },
-          ...logs,
-        ]);
+        addAudit('item.approved', `✅ 항목 승인: ${approvedItem.name}`);
 
         const newStatus = computeCaseStatus(items);
         if (newStatus !== prev.status) {
-          setAuditLogs((logs) => [
-            {
-              id: generateId('AL'),
-              action: 'case.status_changed',
-              actorRole: 'system',
-              text: `Status ${prev.status} → ${newStatus}`,
-              createdAt: nowStr(),
-            },
-            ...logs,
-          ]);
+          addAudit('case.status_changed', `Status ${prev.status} → ${newStatus}`, 'system');
         }
         return { ...prev, items, status: newStatus };
       });
     },
-    []
+    [addAudit]
   );
 
+  /** Operator adds 사증발급확인서 to the case — only if not already present */
+  const operatorAddVisaConfirm = useCallback(() => {
+    setChatCase((prev) => {
+      if (prev.closed) return prev;
+      if (prev.items.some((i) => i.code === 'visa_confirm')) return prev; // already added
+
+      const newItem: Item = {
+        ...VISA_CONFIRM_DEF,
+        state: 'empty',
+        value: null,
+        file: null,
+        suppReason: null,
+        operatorAdded: true,
+      };
+      const items = [...prev.items, newItem];
+
+      setMessages((msgs) => [
+        ...msgs,
+        {
+          id: generateId('M'),
+          role: 'operator',
+          type: 'template',
+          templateItemCode: 'visa_confirm',
+          templateCategory: '추가 서류 요청',
+          text: `[추가 서류 요청] 사증발급확인서\n자사에서 확보하지 못한 관계로 사증발급확인서 제출을 요청드립니다.`,
+          createdAt: nowStr(),
+        },
+      ]);
+      addAudit('case.item_added', '오퍼레이터: 사증발급확인서 항목 추가 및 요청', 'operator');
+
+      const newStatus = computeCaseStatus(items);
+      return { ...prev, items, status: newStatus };
+    });
+    stopWaitTimer();
+  }, [addAudit, stopWaitTimer]);
+
   const operatorChangeSeg = useCallback(
-    (newSeg: Seg, reason?: string) => {
+    (newSeg: Seg, newSimType?: SimType) => {
       setChatCase((prev) => {
-        if (prev.closed || prev.seg === newSeg) return prev;
-        const oldSeg = prev.seg;
-        const newDefs = SEG_REQUIREMENTS[newSeg];
+        if (prev.closed || (prev.seg === newSeg && (!newSimType || prev.simType === newSimType))) return prev;
+        const resolvedSimType = newSimType ?? prev.simType;
+        const oldLabel = `${SEG_LABELS[prev.seg]} · ${SIM_LABELS[prev.simType]}`;
+        const newLabel = `${SEG_LABELS[newSeg]} · ${SIM_LABELS[resolvedSimType]}`;
+
+        const newDefs = getItemsForSeg(newSeg, resolvedSimType);
         const newItems: Item[] = newDefs.map((def) => {
           const existing = prev.items.find((i) => i.code === def.code);
-          if (existing) {
-            return { ...def, state: existing.state, value: existing.value, file: existing.file, suppReason: existing.suppReason };
-          }
+          if (existing) return { ...def, state: existing.state, value: existing.value, file: existing.file, suppReason: existing.suppReason };
           return { ...def, state: 'empty' as const, value: null, file: null, suppReason: null };
         });
 
-        setAuditLogs((logs) => [
-          {
-            id: generateId('AL'),
-            action: 'case.seg_changed',
-            actorRole: 'operator',
-            text: `Seg 수동 변경: ${oldSeg} → ${newSeg}${reason ? ' · ' + reason : ''}`,
-            payload: { from: oldSeg, to: newSeg, reason },
-            createdAt: nowStr(),
-          },
-          ...logs,
-        ]);
+        // Preserve operator-added items (e.g. visa_confirm)
+        const opAddedItems = prev.items.filter((i) => i.operatorAdded && !newItems.find((n) => n.code === i.code));
+        const finalItems = [...newItems, ...opAddedItems];
 
-        const newStatus = computeCaseStatus(newItems);
-        return { ...prev, seg: newSeg, items: newItems, status: newStatus };
+        addAudit('case.seg_changed', `Seg 수동 변경: ${oldLabel} → ${newLabel}`, 'operator', { from: prev.seg, to: newSeg });
+        const newStatus = computeCaseStatus(finalItems);
+        return { ...prev, seg: newSeg, simType: resolvedSimType, items: finalItems, status: newStatus };
       });
     },
-    []
+    [addAudit]
   );
 
   const operatorCloseChat = useCallback(
     (reason: CloseReason, memo?: string) => {
       setChatCase((prev) => {
         if (prev.closed || prev.status !== 'D') return prev;
-        const updated = { ...prev, closed: true, closeReason: reason, closeMemo: memo, closedAt: nowStr() };
         setMessages((msgs) => [
           ...msgs,
           {
@@ -469,22 +355,12 @@ export function useChat(initialSeg: Seg = 'S1') {
             createdAt: nowStr(),
           },
         ]);
-        setAuditLogs((logs) => [
-          {
-            id: generateId('AL'),
-            action: 'case.closed',
-            actorRole: 'operator',
-            text: `🔒 채팅 종료 · 사유: ${reason}${memo ? ' · ' + memo : ''}`,
-            payload: { reason, memo },
-            createdAt: nowStr(),
-          },
-          ...logs,
-        ]);
-        return updated;
+        addAudit('case.closed', `🔒 채팅 종료 · 사유: ${reason}${memo ? ' · ' + memo : ''}`, 'operator', { reason, memo });
+        return { ...prev, closed: true, closeReason: reason, closeMemo: memo, closedAt: nowStr() };
       });
       stopWaitTimer();
     },
-    [stopWaitTimer]
+    [addAudit, stopWaitTimer]
   );
 
   return {
@@ -492,13 +368,13 @@ export function useChat(initialSeg: Seg = 'S1') {
     messages,
     auditLogs,
     waitTimerActive,
-    // actions
     resetCase,
     studentSubmitItem,
     studentSendMessage,
     operatorSendMessage,
     operatorRequestSupplement,
     operatorApproveItem,
+    operatorAddVisaConfirm,
     operatorChangeSeg,
     operatorCloseChat,
     stopWaitTimer,

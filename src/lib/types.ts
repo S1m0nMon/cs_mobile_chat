@@ -3,6 +3,7 @@
 // ===================================================
 
 export type Seg = 'S1' | 'S2';
+export type SimType = 'esim' | 'usim';
 
 /** A/B/C/D — derived from item states (never stored as truth) */
 export type CaseStatus = 'A' | 'B' | 'C' | 'D';
@@ -23,30 +24,12 @@ export type ItemState =
   | 'approved';       // 승인 완료 (잠금)
 
 export type ItemCode =
-  | 'passport_info'
-  | 'passport_visa'
-  | 'activation_date'
-  | 'sim_type'
-  | 'device_model'
-  | 'imei'
-  | 'current_number'
-  | 'current_carrier'
-  | 'mnp_consent';
-
-export interface ValidationRule {
-  kind: 'regex' | 'date_future' | 'enum' | 'non_empty';
-  pattern?: string;
-  message: string;
-}
-
-export interface FileMeta {
-  id: string;
-  name: string;
-  kind: 'image' | 'pdf' | 'file';
-  size: string;        // e.g. "1.2MB"
-  url: string;         // blob URL (client-side) or server URL
-  uploadedAt: string;
-}
+  | 'passport_scan'     // 여권 양면 평판 스캔본
+  | 'device_info'       // 기기정보 캡처본 (eSIM)
+  | 'sim_photo'         // 유심 사진 (uSIM)
+  | 'current_carrier'   // 기존 통신사 (S2)
+  | 'current_number'    // 기존 전화번호 (S2)
+  | 'visa_confirm';     // 사증발급확인서 (오퍼레이터 요청 시만)
 
 export interface ItemDefinition {
   code: ItemCode;
@@ -58,6 +41,16 @@ export interface ItemDefinition {
   options?: string[];
   validate?: (v: string) => boolean;
   validateMsg?: string;
+  suppCategories?: string[];
+}
+
+export interface FileMeta {
+  id: string;
+  name: string;
+  kind: 'image' | 'pdf' | 'file';
+  size: string;
+  url: string;
+  uploadedAt: string;
 }
 
 export interface Item extends ItemDefinition {
@@ -67,6 +60,8 @@ export interface Item extends ItemDefinition {
   suppReason: string | null;
   submittedAt?: string;
   lastUpdatedAt?: string;
+  /** true = added by operator (e.g. visa_confirm), not part of initial Seg requirements */
+  operatorAdded?: boolean;
 }
 
 export type MessageType = 'text' | 'system' | 'template' | 'file';
@@ -81,7 +76,7 @@ export interface Message {
   templateItemCode?: ItemCode;
   templateCategory?: string;
   templateDetail?: string;
-  isWarn?: boolean;  // system warn style
+  isWarn?: boolean;
   createdAt: string;
 }
 
@@ -91,7 +86,7 @@ export type AuditAction =
   | 'case.seg_changed'
   | 'case.status_changed'
   | 'case.closed'
-  | 'case.reopened'
+  | 'case.item_added'
   | 'item.submitted'
   | 'item.resubmitted'
   | 'item.supp_requested'
@@ -103,7 +98,7 @@ export interface AuditLog {
   id: string;
   action: AuditAction;
   actorRole: 'student' | 'operator' | 'system' | 'supervisor';
-  text: string;          // human-readable description
+  text: string;
   payload?: Record<string, unknown>;
   createdAt: string;
 }
@@ -114,7 +109,8 @@ export interface Case {
   studentSchool: string;
   studentCountry: string;
   seg: Seg;
-  status: CaseStatus | null;  // cached; recomputed on every item change
+  simType: SimType;
+  status: CaseStatus | null;
   closed: boolean;
   closeReason?: CloseReason;
   closeMemo?: string;
