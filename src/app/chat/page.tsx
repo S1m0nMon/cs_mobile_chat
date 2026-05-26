@@ -26,7 +26,7 @@ export default function ChatPage() {
     studentApplyAndStart,
     studentSubmitItem,
     studentSendMessage,
-    operatorSendMessage,
+    operatorActivate,
     operatorRequestSupplement,
     operatorApproveItem,
     operatorAddVisaConfirm,
@@ -172,7 +172,7 @@ export default function ChatPage() {
                 messages={messages}
                 auditLogs={auditLogs}
                 waitTimerActive={waitTimerActive}
-                onSendMessage={operatorSendMessage}
+                onActivate={operatorActivate}
                 onRequestSupplement={operatorRequestSupplement}
                 onApproveItem={operatorApproveItem}
                 onAddVisaConfirm={operatorAddVisaConfirm}
@@ -219,7 +219,7 @@ export default function ChatPage() {
               messages={messages}
               auditLogs={auditLogs}
               waitTimerActive={waitTimerActive}
-              onSendMessage={operatorSendMessage}
+              onActivate={operatorActivate}
               onRequestSupplement={operatorRequestSupplement}
               onApproveItem={operatorApproveItem}
               onAddVisaConfirm={operatorAddVisaConfirm}

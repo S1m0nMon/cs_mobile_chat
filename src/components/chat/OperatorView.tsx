@@ -12,7 +12,7 @@ interface Props {
   messages: Message[];
   auditLogs: AuditLog[];
   waitTimerActive: boolean;
-  onSendMessage: (text: string) => void;
+  onActivate: () => void;
   onRequestSupplement: (code: ItemCode, category: string, detail?: string) => void;
   onApproveItem: (code: ItemCode) => void;
   onAddVisaConfirm: () => void;
@@ -49,14 +49,13 @@ export default function OperatorView({
   messages,
   auditLogs,
   waitTimerActive,
-  onSendMessage,
+  onActivate,
   onRequestSupplement,
   onApproveItem,
   onAddVisaConfirm,
   onChangeSeg,
   onCloseChat,
 }: Props) {
-  const [opText, setOpText] = useState('');
   const [suppItem, setSuppItem] = useState<Item | null>(null);
   const [showClose, setShowClose] = useState(false);
 
@@ -65,12 +64,7 @@ export default function OperatorView({
   const approvedCount = chatCase.items.filter((i) => i.state === 'approved').length;
   const totalCount = chatCase.items.length;
   const hasVisaConfirm = chatCase.items.some((i) => i.code === 'visa_confirm');
-
-  const handleSend = () => {
-    if (!opText.trim() || chatCase.closed) return;
-    onSendMessage(opText);
-    setOpText('');
-  };
+  const isReady = chatCase.status === 'D' && !chatCase.closed;
 
   const handleSegChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
@@ -93,7 +87,12 @@ export default function OperatorView({
         <div className="flex items-center gap-2">
           {waitTimerActive && (
             <span className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-full animate-pulse font-medium">
-              ⏱ 1분 타이머 진행 중
+              ⏱ 응답 대기 중
+            </span>
+          )}
+          {isReady && (
+            <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full font-semibold animate-pulse">
+              ✅ 개통 준비 완료
             </span>
           )}
           {chatCase.closed && (
@@ -104,16 +103,35 @@ export default function OperatorView({
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
 
-        {/* ── Waiting banner: shown until student enters application number ── */}
+        {/* ── Waiting banner ── */}
         {!chatCase.applicationNumber && !chatCase.closed && (
           <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
             <span className="text-amber-500 text-lg flex-shrink-0 animate-pulse">⏳</span>
             <div>
               <p className="text-sm font-semibold text-amber-800">학생이 신청번호 입력 대기 중</p>
               <p className="text-xs text-amber-600 mt-0.5">
-                학생이 채팅 페이지에서 신청번호를 입력하면 채팅이 시작됩니다.
+                학생이 신청번호를 입력하면 체크리스트가 활성화됩니다.
               </p>
             </div>
+          </div>
+        )}
+
+        {/* ── 개통 완료 Activation Block ── */}
+        {isReady && (
+          <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-4 shadow-sm">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-2xl">🎉</span>
+              <div>
+                <p className="text-sm font-bold text-emerald-800">개통 준비 완료</p>
+                <p className="text-xs text-emerald-600">모든 서류 ({totalCount}/{totalCount})가 승인되었습니다.</p>
+              </div>
+            </div>
+            <button
+              onClick={onActivate}
+              className="w-full py-3 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 active:scale-[0.99] transition-all shadow-sm"
+            >
+              ✅ 개통 완료 처리
+            </button>
           </div>
         )}
 
@@ -123,7 +141,6 @@ export default function OperatorView({
           <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
             <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">케이스 정보</h3>
             <dl className="space-y-1.5 text-sm">
-              {/* Application number — highlighted row */}
               <div className="flex gap-2">
                 <dt className="text-gray-400 w-20 flex-shrink-0">신청번호</dt>
                 <dd className={`font-mono font-semibold break-all ${chatCase.applicationNumber ? 'text-[#1F4E79]' : 'text-amber-500 italic'}`}>
@@ -165,7 +182,7 @@ export default function OperatorView({
                   <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">종료</span>
                 ) : chatCase.status ? (
                   <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${statusColor}`}>
-                    {chatCase.status} · {statusLabel}
+                    {statusLabel}
                   </span>
                 ) : (
                   <span className="text-xs text-gray-400">—</span>
@@ -194,23 +211,30 @@ export default function OperatorView({
         <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
           <div className="flex justify-between items-center mb-3">
             <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide">📋 필요 항목 체크리스트</h3>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-[#1F4E79]">
-                {totalCount > 0 ? `${approvedCount} / ${totalCount} 승인` : '—'}
-              </span>
-              {!hasVisaConfirm && !chatCase.closed && (
-                <button
-                  onClick={onAddVisaConfirm}
-                  className="text-[11px] px-2.5 py-1 rounded-lg border border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-medium transition-colors"
-                  title="자사 미확보 시 사증발급확인서 요청"
-                >
-                  🛂 사증발급확인서 요청
-                </button>
-              )}
-            </div>
+            {chatCase.applicationNumber && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-[#1F4E79]">
+                  {totalCount > 0 ? `${approvedCount} / ${totalCount} 승인` : '—'}
+                </span>
+                {!hasVisaConfirm && !chatCase.closed && (
+                  <button
+                    onClick={onAddVisaConfirm}
+                    className="text-[11px] px-2.5 py-1 rounded-lg border border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-medium transition-colors"
+                    title="자사 미확보 시 사증발급확인서 요청"
+                  >
+                    🛂 사증발급확인서 요청
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
-          {chatCase.items.length === 0 ? (
+          {!chatCase.applicationNumber ? (
+            <div className="flex flex-col items-center justify-center py-8 gap-2">
+              <span className="text-2xl">🔒</span>
+              <p className="text-sm text-gray-400 text-center">학생이 신청번호 입력 후 열람 가능합니다</p>
+            </div>
+          ) : chatCase.items.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-4">항목 없음</p>
           ) : (
             <div className="space-y-2">
@@ -296,39 +320,32 @@ export default function OperatorView({
           )}
         </div>
 
-        {/* Operator Chat + Close */}
-        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">오퍼레이터 자유 채팅 + 종료</h3>
-          <div className="flex gap-2 mb-2">
-            <input
-              type="text"
-              value={opText}
-              onChange={(e) => setOpText(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleSend(); }}
-              placeholder={!chatCase.applicationNumber ? '학생 신청번호 입력 대기 중...' : '자유 채팅 (Status 변경 없음)...'}
-              disabled={chatCase.closed || !chatCase.applicationNumber}
-              className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#1F4E79] disabled:bg-gray-100 disabled:cursor-not-allowed"
-            />
+        {/* Cancellation — shown when chat is active and not yet at D */}
+        {!chatCase.closed && chatCase.applicationNumber && !isReady && (
+          <div className="bg-white rounded-xl border border-gray-200 p-3 shadow-sm">
             <button
-              onClick={handleSend}
-              disabled={chatCase.closed || !opText.trim() || !chatCase.applicationNumber}
-              className="px-4 py-2 bg-[#1F4E79] text-white rounded-lg text-sm font-medium hover:bg-[#163a5c] disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+              onClick={() => setShowClose(true)}
+              className="w-full py-2 rounded-lg border border-gray-300 text-gray-500 text-xs font-medium hover:bg-gray-50 hover:border-red-300 hover:text-red-600 transition-colors"
             >
-              전송
+              🚫 개통 취소 처리
+            </button>
+            <p className="text-[11px] text-gray-400 mt-1.5 text-center">
+              모든 항목 승인 시 개통 완료 버튼이 활성화됩니다.
+            </p>
+          </div>
+        )}
+
+        {/* Cancellation after activation (edge case) */}
+        {isReady && (
+          <div className="flex justify-center">
+            <button
+              onClick={() => setShowClose(true)}
+              className="text-xs text-gray-400 hover:text-red-500 underline underline-offset-2 transition-colors"
+            >
+              취소 처리
             </button>
           </div>
-          <button
-            onClick={() => setShowClose(true)}
-            disabled={chatCase.closed || chatCase.status !== 'D'}
-            className="w-full py-2 rounded-lg border border-red-300 bg-red-50 text-red-700 text-sm font-medium hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            title={chatCase.status !== 'D' ? 'Status D (모든 항목 승인) 이후에만 종료 가능합니다' : ''}
-          >
-            🔒 채팅 종료 {chatCase.status !== 'D' && !chatCase.closed ? '(모든 항목 승인 후 활성화)' : ''}
-          </button>
-          <p className="text-[11px] text-gray-400 mt-2">
-            ℹ️ 보완 요청·승인은 위 체크리스트의 항목별 버튼을 사용합니다. 자유 채팅은 Status를 변경하지 않습니다.
-          </p>
-        </div>
+        )}
 
         {/* Recent Chat */}
         <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">

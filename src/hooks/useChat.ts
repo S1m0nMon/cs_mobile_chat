@@ -18,6 +18,23 @@ import { DEMO_STUDENTS, generateId, nowStr } from '@/lib/utils';
 
 const WAIT_TIMER_MS = 60 * 1000; // 1 minute
 
+// ── Predefined operator script messages ────────────────────────────────────────
+// Triggered automatically by status transitions. Minimises free-form operator input.
+const SCRIPT = {
+  intro: (name: string) =>
+    `안녕하세요, ${name}님! 하이어비자 모바일 개통팀입니다.\n` +
+    `신청해 주셔서 감사합니다. 아래 서류 목록을 확인하시고 순서대로 제출해 주세요. 궁금한 점이 있으시면 언제든지 말씀해 주세요. 🙏`,
+  resubmitConfirm: () =>
+    `재제출해 주신 서류를 확인하겠습니다. 잠시만 기다려 주세요. 🔍`,
+  allApproved: () =>
+    `모든 서류 확인이 완료되었습니다! 곧 개통 처리를 진행해 드리겠습니다. 📱`,
+  activated: (name: string, segLabel: string, simLabel: string) =>
+    `${name}님, 모바일 개통이 정상적으로 완료되었습니다! 🎉\n` +
+    `${segLabel} · ${simLabel} 방식으로 개통 처리되었습니다.\n` +
+    `하이어비자 모바일 서비스 이용을 진심으로 환영합니다. 😊\n` +
+    `이용 중 불편하신 사항은 언제든지 채팅으로 문의해 주세요.`,
+};
+
 function buildInitialItems(seg: Seg, simType: SimType): Item[] {
   return getItemsForSeg(seg, simType).map((def) => ({
     ...def,
@@ -160,13 +177,14 @@ export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim'
       setChatCase((prev) => {
         if (prev.applicationNumber) return prev; // guard — already entered
         addAudit('case.application_entered', `신청번호 입력: ${trimmed} · 채팅 시작`, 'student', { applicationNumber: trimmed });
+        const studentName = prev.studentName;
         setTimeout(() => {
           setMessages([
             {
               id: generateId('M'),
               role: 'bot',
               type: 'text',
-              text: `안녕하세요! 👋\n신청번호 ${trimmed}가 확인되었습니다.\n잠시 후 담당 오퍼레이터가 필요 서류를 안내해드릴게요.`,
+              text: `신청번호 ${trimmed}가 확인되었습니다. 잠시 후 오퍼레이터가 안내해 드릴게요.`,
               createdAt: nowStr(),
             },
             {
@@ -179,10 +197,24 @@ export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim'
           ]);
           startWaitTimer();
         }, 300);
+        // Operator intro — simulates auto-assignment
+        setTimeout(() => {
+          setMessages((msgs) => [
+            ...msgs,
+            {
+              id: generateId('M'),
+              role: 'operator',
+              type: 'text',
+              text: SCRIPT.intro(studentName),
+              createdAt: nowStr(),
+            },
+          ]);
+          stopWaitTimer();
+        }, 1800);
         return { ...prev, applicationNumber: trimmed };
       });
     },
-    [addAudit, startWaitTimer]
+    [addAudit, startWaitTimer, stopWaitTimer]
   );
 
   /**
@@ -211,6 +243,7 @@ export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim'
         const newStatus = computeCaseStatus(items);
 
         const segLabel = `${SEG_LABELS[seg]} · ${SIM_LABELS[simType]}`;
+        const studentName = prev.studentName;
         addAudit(
           'case.application_entered',
           `채팅 내 신청 워크플로우 완료 · ${segLabel} · 신청번호 자동 발급: ${generated}`,
@@ -224,7 +257,7 @@ export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim'
               id: generateId('M'),
               role: 'bot',
               type: 'text',
-              text: `신청이 접수되었습니다! 🎉\n신청번호: ${generated}\n선택하신 ${segLabel} 기준으로 필요 서류가 준비되었습니다.\n잠시 후 담당 오퍼레이터가 안내해드릴게요.`,
+              text: `신청이 접수되었습니다! 🎉\n신청번호: ${generated}\n${segLabel} 기준으로 필요 서류가 준비되었습니다.`,
               createdAt: nowStr(),
             },
             {
@@ -237,6 +270,20 @@ export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim'
           ]);
           startWaitTimer();
         }, 300);
+        // Operator intro — simulates auto-assignment
+        setTimeout(() => {
+          setMessages((msgs) => [
+            ...msgs,
+            {
+              id: generateId('M'),
+              role: 'operator',
+              type: 'text',
+              text: SCRIPT.intro(studentName),
+              createdAt: nowStr(),
+            },
+          ]);
+          stopWaitTimer();
+        }, 1800);
 
         return {
           ...prev,
@@ -248,7 +295,7 @@ export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim'
         };
       });
     },
-    [addAudit, startWaitTimer]
+    [addAudit, startWaitTimer, stopWaitTimer]
   );
 
   const studentSubmitItem = useCallback(
@@ -282,11 +329,23 @@ export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim'
         if (newStatus !== prev.status) {
           addAudit('case.status_changed', `Status ${prev.status ?? '초기'} → ${newStatus}`, 'system', { from: prev.status, to: newStatus });
         }
+
+        // Auto-confirm resubmit when all supplements cleared (status → C)
+        if (isResubmit && newStatus === 'C' && prev.status !== 'C') {
+          setTimeout(() => {
+            setMessages((msgs) => [
+              ...msgs,
+              { id: generateId('M'), role: 'operator', type: 'text', text: SCRIPT.resubmitConfirm(), createdAt: nowStr() },
+            ]);
+            stopWaitTimer();
+          }, 600);
+        }
+
         return { ...prev, items, status: newStatus };
       });
       startWaitTimer();
     },
-    [startWaitTimer, addAudit]
+    [startWaitTimer, addAudit, stopWaitTimer]
   );
 
   const studentSendMessage = useCallback(
@@ -367,8 +426,19 @@ export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim'
 
         const newStatus = computeCaseStatus(items);
         if (newStatus !== prev.status) {
-          addAudit('case.status_changed', `Status ${prev.status} → ${newStatus}`, 'system');
+          addAudit('case.status_changed', `Status ${prev.status} → ${newStatus} (개통 준비 완료)`, 'system');
         }
+
+        // Auto-message when all items approved (status → D = 개통 준비 완료)
+        if (newStatus === 'D' && prev.status !== 'D') {
+          setTimeout(() => {
+            setMessages((msgs) => [
+              ...msgs,
+              { id: generateId('M'), role: 'operator', type: 'text', text: SCRIPT.allApproved(), createdAt: nowStr() },
+            ]);
+          }, 400);
+        }
+
         return { ...prev, items, status: newStatus };
       });
     },
@@ -438,21 +508,42 @@ export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim'
     [addAudit]
   );
 
+  /** One-click activation — only available when status === D (개통 준비 완료). */
+  const operatorActivate = useCallback(() => {
+    setChatCase((prev) => {
+      if (prev.closed || prev.status !== 'D') return prev;
+      const completionText = SCRIPT.activated(
+        prev.studentName,
+        SEG_LABELS[prev.seg],
+        SIM_LABELS[prev.simType]
+      );
+      setMessages((msgs) => [
+        ...msgs,
+        { id: generateId('M'), role: 'operator', type: 'text', text: completionText, createdAt: nowStr() },
+        { id: generateId('M'), role: 'system', type: 'system', text: '🎉 개통 완료 · 채팅 종료', createdAt: nowStr() },
+      ]);
+      addAudit('case.closed', '🎉 개통 완료 · 채팅 종료', 'operator', { reason: '개통완료' });
+      return { ...prev, closed: true, closeReason: '개통완료' as CloseReason, closedAt: nowStr() };
+    });
+    stopWaitTimer();
+  }, [addAudit, stopWaitTimer]);
+
+  /** Cancellation path — available at any time (개통취소-고객요청 / 서류미비 / 기타). */
   const operatorCloseChat = useCallback(
     (reason: CloseReason, memo?: string) => {
       setChatCase((prev) => {
-        if (prev.closed || prev.status !== 'D') return prev;
+        if (prev.closed) return prev;
         setMessages((msgs) => [
           ...msgs,
           {
             id: generateId('M'),
             role: 'system',
             type: 'system',
-            text: `채팅이 종료되었습니다 (${reason}).${reason === '개통완료' ? ' 🎉' : ''}`,
+            text: `채팅이 종료되었습니다. 사유: ${reason}`,
             createdAt: nowStr(),
           },
         ]);
-        addAudit('case.closed', `🔒 채팅 종료 · 사유: ${reason}${memo ? ' · ' + memo : ''}`, 'operator', { reason, memo });
+        addAudit('case.closed', `🔒 개통 취소 · 사유: ${reason}${memo ? ' · ' + memo : ''}`, 'operator', { reason, memo });
         return { ...prev, closed: true, closeReason: reason, closeMemo: memo, closedAt: nowStr() };
       });
       stopWaitTimer();
@@ -469,6 +560,7 @@ export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim'
     studentEnterApplicationNumber,
     studentApplyAndStart,
     studentSubmitItem,
+    operatorActivate,
     studentSendMessage,
     operatorSendMessage,
     operatorRequestSupplement,

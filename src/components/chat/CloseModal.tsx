@@ -8,22 +8,22 @@ interface Props {
   onConfirm: (reason: CloseReason, memo?: string) => void;
 }
 
+// '개통완료' is handled by the dedicated activation button; this modal covers cancellation only.
 const REASONS: CloseReason[] = [
-  '개통완료',
   '개통취소-고객요청',
   '개통취소-서류미비',
   '기타',
 ];
 
 export default function CloseModal({ onClose, onConfirm }: Props) {
-  const [reason, setReason] = useState<CloseReason>('개통완료');
+  const [reason, setReason] = useState<CloseReason>('개통취소-고객요청');
   const [memo, setMemo] = useState('');
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
         <div className="p-5">
-          <h3 className="text-base font-semibold mb-4">🔒 채팅 종료</h3>
+          <h3 className="text-base font-semibold mb-4">🚫 개통 취소 처리</h3>
 
           <label className="block text-xs text-gray-500 mb-1">종료 사유 (필수)</label>
           <select

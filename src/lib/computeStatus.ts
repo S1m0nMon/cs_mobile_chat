@@ -16,7 +16,7 @@ export const STATUS_LABELS: Record<string, string> = {
   A: '검토 중',
   B: '보완 요청 중',
   C: '재제출됨',
-  D: '서류 승인 완료',
+  D: '개통 준비 완료',
 };
 
 export const STATUS_COLORS: Record<string, string> = {
