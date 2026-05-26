@@ -18,6 +18,7 @@ interface Props {
   onAddVisaConfirm: () => void;
   onChangeSeg: (seg: Seg, simType?: SimType) => void;
   onCloseChat: (reason: CloseReason, memo?: string) => void;
+  onSendMessage: (text: string) => void;
 }
 
 const ITEM_STATE_LABELS: Record<Item['state'], string> = {
@@ -55,9 +56,12 @@ export default function OperatorView({
   onAddVisaConfirm,
   onChangeSeg,
   onCloseChat,
+  onSendMessage,
 }: Props) {
   const [suppItem, setSuppItem] = useState<Item | null>(null);
   const [showClose, setShowClose] = useState(false);
+  const [opText, setOpText] = useState('');
+  const handleSend = () => { if (!opText.trim() || chatCase.closed) return; onSendMessage(opText); setOpText(''); };
 
   const statusLabel = chatCase.status ? STATUS_LABELS[chatCase.status] : '—';
   const statusColor = chatCase.status ? STATUS_COLORS[chatCase.status] : 'bg-gray-100 text-gray-500';
@@ -112,6 +116,37 @@ export default function OperatorView({
               <p className="text-xs text-amber-600 mt-0.5">
                 학생이 신청번호를 입력하면 체크리스트가 활성화됩니다.
               </p>
+            </div>
+          </div>
+        )}
+
+        {/* ── Seg confirmation card ── */}
+        {chatCase.applicationNumber && !chatCase.segConfirmed && !chatCase.closed && (
+          <div className="bg-white border-2 border-[#1F4E79]/30 rounded-2xl p-4 shadow-sm">
+            <div className="flex items-start gap-2 mb-3">
+              <span className="text-lg">🔢</span>
+              <div>
+                <p className="text-sm font-bold text-[#1F4E79]">Seg 확인 필요</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  신청번호 <span className="font-mono font-semibold">{chatCase.applicationNumber}</span>에 대한 Seg를 선택해주세요.
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { seg: 'S1' as Seg, simType: 'esim' as SimType, label: 'S1 신규개통 · eSIM', color: 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100' },
+                { seg: 'S1' as Seg, simType: 'usim' as SimType, label: 'S1 신규개통 · uSIM', color: 'border-blue-200 bg-blue-50/60 text-blue-600 hover:bg-blue-100' },
+                { seg: 'S2' as Seg, simType: 'esim' as SimType, label: 'S2 MNP · eSIM', color: 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100' },
+                { seg: 'S2' as Seg, simType: 'usim' as SimType, label: 'S2 MNP · uSIM', color: 'border-amber-200 bg-amber-50/60 text-amber-600 hover:bg-amber-100' },
+              ] as const).map(({ seg, simType, label, color }) => (
+                <button
+                  key={label}
+                  onClick={() => onChangeSeg(seg, simType)}
+                  className={`text-xs px-3 py-2.5 rounded-xl border font-semibold transition-colors ${color}`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
           </div>
         )}
@@ -234,6 +269,11 @@ export default function OperatorView({
               <span className="text-2xl">🔒</span>
               <p className="text-sm text-gray-400 text-center">학생이 신청번호 입력 후 열람 가능합니다</p>
             </div>
+          ) : !chatCase.segConfirmed ? (
+            <div className="flex flex-col items-center justify-center py-8 gap-2">
+              <span className="text-2xl">🔢</span>
+              <p className="text-sm text-gray-400 text-center">Seg 확인 후 체크리스트가 활성화됩니다</p>
+            </div>
           ) : chatCase.items.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-4">항목 없음</p>
           ) : (
@@ -250,32 +290,7 @@ export default function OperatorView({
                       {item.operatorAdded && (
                         <span className="text-[10px] bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded font-medium">오퍼레이터 추가</span>
                       )}
-                      {item.hint && <span className="text-xs text-gray-400">{item.hint}</span>}
                     </div>
-
-                    {item.file ? (
-                      <div className="mt-1">
-                        <div className="flex items-center gap-2 text-xs text-gray-500">
-                          {item.file.kind === 'image' ? '🖼️' : '📄'} {item.file.name} · {item.file.size}
-                          <a href={item.file.url} download={item.file.name} className="text-[#1F4E79] font-semibold hover:underline ml-1">
-                            ↓ 다운로드
-                          </a>
-                        </div>
-                        {item.file.kind === 'image' && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={item.file.url}
-                            alt="preview"
-                            className="mt-1.5 max-w-[100px] max-h-[60px] rounded border object-cover cursor-zoom-in"
-                            onClick={() => window.open(item.file!.url, '_blank')}
-                          />
-                        )}
-                      </div>
-                    ) : item.value ? (
-                      <div className="text-xs text-gray-500 mt-0.5 break-all">{item.value}</div>
-                    ) : (
-                      <div className="text-xs text-gray-400 italic mt-0.5">미제출</div>
-                    )}
 
                     {item.state === 'supp_requested' && item.suppReason && (
                       <div className="mt-1 text-xs text-amber-700 bg-amber-50 rounded px-2 py-1 border-l-2 border-amber-400">
@@ -319,6 +334,61 @@ export default function OperatorView({
             </div>
           )}
         </div>
+
+        {/* Free chat — unlocked when student requests consultant */}
+        {chatCase.consultantMode && !chatCase.closed && (
+          <div className="bg-white rounded-xl border-2 border-blue-200 p-4 shadow-sm">
+            <div className="flex items-center gap-2 mb-2.5">
+              <span className="text-base">💬</span>
+              <h3 className="text-xs font-bold text-blue-700 uppercase tracking-wide">상담사 직접 연결 중</h3>
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={opText}
+                onChange={(e) => setOpText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSend(); }}
+                placeholder="자유 채팅 입력..."
+                className="flex-1 border border-blue-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 bg-blue-50/30"
+              />
+              <button
+                onClick={handleSend}
+                disabled={!opText.trim()}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+              >
+                전송
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Consultant free chat — unlocked when student requests it */}
+        {chatCase.consultantMode && !chatCase.closed && (
+          <div className="bg-white rounded-xl border-2 border-blue-200 p-4 shadow-sm">
+            <div className="flex items-center gap-2 mb-2.5">
+              <span className="text-base">💬</span>
+              <h3 className="text-xs font-bold text-blue-700 uppercase tracking-wide">상담사 직접 연결 중</h3>
+              <span className="ml-auto text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">학생 요청</span>
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={opText}
+                onChange={(e) => setOpText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSend(); }}
+                placeholder="자유 채팅 입력..."
+                className="flex-1 border border-blue-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 bg-blue-50/30"
+              />
+              <button
+                onClick={handleSend}
+                disabled={!opText.trim()}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+              >
+                전송
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Cancellation — shown when chat is active and not yet at D */}
         {!chatCase.closed && chatCase.applicationNumber && !isReady && (

@@ -88,6 +88,7 @@ export type AuditAction =
   | 'case.status_changed'
   | 'case.closed'
   | 'case.item_added'
+  | 'case.consultant_requested'
   | 'item.submitted'
   | 'item.resubmitted'
   | 'item.supp_requested'
@@ -123,4 +124,8 @@ export interface Case {
   queueEnteredAt: string;
   assignedOperator: string;
   createdAt: string;
+  /** false until operator confirms seg (app-number path) or student sets it (workflow path) */
+  segConfirmed: boolean;
+  /** true once student clicks "상담사 연결이 필요해요" */
+  consultantMode: boolean;
 }

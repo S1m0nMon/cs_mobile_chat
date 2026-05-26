@@ -59,10 +59,12 @@ function buildNewCase(seg: Seg, simType: SimType, counter: number): Case {
     status: null,
     closed: false,
     rounds: 0,
-    items: buildInitialItems(seg, simType),
+    items: [],                // built when seg is confirmed or student uses workflow
     queueEnteredAt: '—',      // set on client via useEffect
     assignedOperator: 'OP-001 (김지수)',
     createdAt: '—',
+    segConfirmed: false,
+    consultantMode: false,
   };
 }
 
@@ -155,9 +157,11 @@ export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim'
       counterRef.current += 1;
       const t = nowStr();
       const fresh = buildNewCase(seg, simType, counterRef.current);
-      const initStatus = computeCaseStatus(fresh.items);
+      // Operator explicitly chose seg via header — build items and confirm seg immediately
+      const items = buildInitialItems(seg, simType);
+      const initStatus = computeCaseStatus(items);
       // applicationNumber is '' in fresh — student will enter it on the entry screen
-      setChatCase({ ...fresh, status: initStatus, queueEnteredAt: t, createdAt: t });
+      setChatCase({ ...fresh, items, status: initStatus, queueEnteredAt: t, createdAt: t, segConfirmed: true });
       setMessages([]);
       setAuditLogs([
         { id: generateId('AL'), action: 'case.created', actorRole: 'system', text: `케이스 생성 · 신청번호 입력 대기 · ${fresh.id}`, createdAt: t },
@@ -177,7 +181,6 @@ export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim'
       setChatCase((prev) => {
         if (prev.applicationNumber) return prev; // guard — already entered
         addAudit('case.application_entered', `신청번호 입력: ${trimmed} · 채팅 시작`, 'student', { applicationNumber: trimmed });
-        const studentName = prev.studentName;
         setTimeout(() => {
           setMessages([
             {
@@ -197,24 +200,11 @@ export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim'
           ]);
           startWaitTimer();
         }, 300);
-        // Operator intro — simulates auto-assignment
-        setTimeout(() => {
-          setMessages((msgs) => [
-            ...msgs,
-            {
-              id: generateId('M'),
-              role: 'operator',
-              type: 'text',
-              text: SCRIPT.intro(studentName),
-              createdAt: nowStr(),
-            },
-          ]);
-          stopWaitTimer();
-        }, 1800);
+        // Operator intro fires when operator confirms seg, not here
         return { ...prev, applicationNumber: trimmed };
       });
     },
-    [addAudit, startWaitTimer, stopWaitTimer]
+    [addAudit, startWaitTimer]
   );
 
   /**
@@ -292,6 +282,7 @@ export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim'
           simType,
           items,
           status: newStatus,
+          segConfirmed: true,
         };
       });
     },
@@ -484,8 +475,13 @@ export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim'
   const operatorChangeSeg = useCallback(
     (newSeg: Seg, newSimType?: SimType) => {
       setChatCase((prev) => {
-        if (prev.closed || (prev.seg === newSeg && (!newSimType || prev.simType === newSimType))) return prev;
+        if (prev.closed) return prev;
         const resolvedSimType = newSimType ?? prev.simType;
+        const isFirstConfirmation = !prev.segConfirmed;
+
+        // For subsequent changes, guard against no-op
+        if (!isFirstConfirmation && prev.seg === newSeg && prev.simType === resolvedSimType) return prev;
+
         const oldLabel = `${SEG_LABELS[prev.seg]} · ${SIM_LABELS[prev.simType]}`;
         const newLabel = `${SEG_LABELS[newSeg]} · ${SIM_LABELS[resolvedSimType]}`;
 
@@ -500,12 +496,60 @@ export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim'
         const opAddedItems = prev.items.filter((i) => i.operatorAdded && !newItems.find((n) => n.code === i.code));
         const finalItems = [...newItems, ...opAddedItems];
 
-        addAudit('case.seg_changed', `Seg 수동 변경: ${oldLabel} → ${newLabel}`, 'operator', { from: prev.seg, to: newSeg });
+        if (isFirstConfirmation) {
+          addAudit('case.seg_assigned', `Seg 확인: ${newLabel}`, 'operator', { seg: newSeg, simType: resolvedSimType });
+          const studentName = prev.studentName;
+          // Schedule operator intro (300ms) now that seg is confirmed
+          setTimeout(() => {
+            setMessages((msgs) => [
+              ...msgs,
+              {
+                id: generateId('M'),
+                role: 'operator',
+                type: 'text',
+                text: SCRIPT.intro(studentName),
+                createdAt: nowStr(),
+              },
+            ]);
+            stopWaitTimer();
+          }, 300);
+        } else {
+          addAudit('case.seg_changed', `Seg 수동 변경: ${oldLabel} → ${newLabel}`, 'operator', { from: prev.seg, to: newSeg });
+        }
+
         const newStatus = computeCaseStatus(finalItems);
-        return { ...prev, seg: newSeg, simType: resolvedSimType, items: finalItems, status: newStatus };
+        return { ...prev, seg: newSeg, simType: resolvedSimType, items: finalItems, status: newStatus, segConfirmed: true };
       });
     },
-    [addAudit]
+    [addAudit, stopWaitTimer]
+  );
+
+  const studentQuickReply = useCallback(
+    (text: string, requestConsultant = false) => {
+      pushMessage({ role: 'student', type: 'text', text });
+      addAudit('message.sent', `학생 빠른 답변: ${text}`, 'student');
+      if (requestConsultant) {
+        setChatCase((prev) => {
+          if (prev.consultantMode) return prev;
+          addAudit('case.consultant_requested', '🔔 상담사 직접 연결 요청', 'student');
+          return { ...prev, consultantMode: true };
+        });
+        // system message visible in chat
+        setMessages((msgs) => [
+          ...msgs,
+          {
+            id: generateId('M'),
+            role: 'system' as const,
+            type: 'system' as const,
+            text: '🔔 상담사 직접 연결이 요청되었습니다. 담당 상담사가 곧 연결됩니다.',
+            isWarn: true,
+            createdAt: nowStr(),
+          },
+        ]);
+      }
+      startWaitTimer();
+    },
+    [pushMessage, addAudit, startWaitTimer]
   );
 
   /** One-click activation — only available when status === D (개통 준비 완료). */
@@ -560,6 +604,7 @@ export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim'
     studentEnterApplicationNumber,
     studentApplyAndStart,
     studentSubmitItem,
+    studentQuickReply,
     operatorActivate,
     studentSendMessage,
     operatorSendMessage,

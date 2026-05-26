@@ -26,7 +26,9 @@ export default function ChatPage() {
     studentApplyAndStart,
     studentSubmitItem,
     studentSendMessage,
+    studentQuickReply,
     operatorActivate,
+    operatorSendMessage,
     operatorRequestSupplement,
     operatorApproveItem,
     operatorAddVisaConfirm,
@@ -154,6 +156,7 @@ export default function ChatPage() {
                       messages={messages}
                       onSubmitItem={studentSubmitItem}
                       onSendMessage={studentSendMessage}
+                      onQuickReply={studentQuickReply}
                       waitTimerActive={waitTimerActive}
                     />
                   </div>
@@ -173,6 +176,7 @@ export default function ChatPage() {
                 auditLogs={auditLogs}
                 waitTimerActive={waitTimerActive}
                 onActivate={operatorActivate}
+                onSendMessage={operatorSendMessage}
                 onRequestSupplement={operatorRequestSupplement}
                 onApproveItem={operatorApproveItem}
                 onAddVisaConfirm={operatorAddVisaConfirm}
@@ -199,6 +203,7 @@ export default function ChatPage() {
                     messages={messages}
                     onSubmitItem={studentSubmitItem}
                     onSendMessage={studentSendMessage}
+                    onQuickReply={studentQuickReply}
                     waitTimerActive={waitTimerActive}
                   />
                 </div>
@@ -220,6 +225,7 @@ export default function ChatPage() {
               auditLogs={auditLogs}
               waitTimerActive={waitTimerActive}
               onActivate={operatorActivate}
+              onSendMessage={operatorSendMessage}
               onRequestSupplement={operatorRequestSupplement}
               onApproveItem={operatorApproveItem}
               onAddVisaConfirm={operatorAddVisaConfirm}

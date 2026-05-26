@@ -12,6 +12,7 @@ interface Props {
   messages: Message[];
   onSubmitItem: (code: ItemCode, payload: { value?: string; file?: FileMeta }) => void;
   onSendMessage: (text: string) => void;
+  onQuickReply: (text: string, requestConsultant?: boolean) => void;
   waitTimerActive: boolean;
 }
 
@@ -44,6 +45,7 @@ export default function StudentView({
   messages,
   onSubmitItem,
   onSendMessage,
+  onQuickReply,
   waitTimerActive,
 }: Props) {
   const [inputText, setInputText] = useState('');
@@ -115,24 +117,6 @@ export default function StudentView({
                 <span className="text-lg flex-shrink-0 mt-0.5">{item.icon}</span>
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-semibold text-gray-800">{item.name}</div>
-                  {item.file ? (
-                    <div className="text-[11px] text-gray-500 mt-0.5">
-                      📎 {item.file.name} ({item.file.size})
-                      {item.file.kind === 'image' && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={item.file.url}
-                          alt="preview"
-                          className="mt-1 max-w-[80px] max-h-[50px] rounded object-cover border cursor-zoom-in"
-                          onClick={() => window.open(item.file!.url, '_blank')}
-                        />
-                      )}
-                    </div>
-                  ) : item.value ? (
-                    <div className="text-[11px] text-gray-500 mt-0.5 break-all">{item.value}</div>
-                  ) : (
-                    <div className="text-[11px] text-gray-400 italic mt-0.5">미제출</div>
-                  )}
                   {item.state === 'supp_requested' && item.suppReason && (
                     <div className="mt-1 text-[11px] text-amber-700 bg-white/70 rounded px-1.5 py-1 border-l-2 border-amber-400">
                       ⚠️ {item.suppReason}
@@ -166,6 +150,60 @@ export default function StudentView({
           </div>
         )}
       </div>
+
+      {/* Supplement summary + quick replies (shown when status B and not in consultant mode) */}
+      {chatCase.status === 'B' && !chatCase.consultantMode && !chatCase.closed && (
+        <div className="border-t-2 border-amber-200 bg-amber-50/90 flex-shrink-0 px-3 py-3 space-y-2.5">
+          {/* Summary header */}
+          <div>
+            <p className="text-[11px] font-bold text-amber-800 uppercase tracking-wide mb-1.5">⚠️ 보완 요청 항목</p>
+            <div className="space-y-1">
+              {chatCase.items
+                .filter((i) => i.state === 'supp_requested')
+                .map((item) => (
+                  <div key={item.code} className="text-xs bg-white/80 rounded-xl px-3 py-2 border-l-2 border-amber-400">
+                    <span className="font-semibold text-amber-900">{item.icon} {item.name}</span>
+                    {item.suppReason && (
+                      <p className="text-amber-700 mt-0.5">{item.suppReason}</p>
+                    )}
+                  </div>
+                ))}
+            </div>
+          </div>
+          {/* Quick reply buttons */}
+          <div>
+            <p className="text-[10px] text-amber-600 mb-1">궁금한 사항이 있으신가요?</p>
+            <div className="flex flex-col gap-1.5">
+              {[
+                { text: '어떤 부분이 부족한 건지 모르겠어요', consultant: false },
+                { text: '어떻게 제출해야 하는지 모르겠어요', consultant: false },
+                { text: '상담사 연결이 필요해요', consultant: true },
+              ].map(({ text, consultant }) => (
+                <button
+                  key={text}
+                  onClick={() => onQuickReply(text, consultant)}
+                  className={`text-xs px-3 py-2 rounded-xl border text-left font-medium transition-colors ${
+                    consultant
+                      ? 'border-[#1F4E79]/40 bg-white text-[#1F4E79] hover:bg-[#1F4E79]/10'
+                      : 'border-amber-300 bg-white text-amber-800 hover:bg-amber-100'
+                  }`}
+                >
+                  {consultant ? '💬 ' : '❓ '}{text}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Consultant mode indicator */}
+      {chatCase.consultantMode && !chatCase.closed && (
+        <div className="px-3 pb-1 flex-shrink-0">
+          <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+            💬 상담사 연결 중
+          </span>
+        </div>
+      )}
 
       {/* Input */}
       <div className="border-t border-gray-200 p-2 bg-white flex gap-2 items-center flex-shrink-0">
