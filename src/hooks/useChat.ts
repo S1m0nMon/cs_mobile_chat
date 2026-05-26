@@ -1,12 +1,11 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { computeCaseStatus } from '@/lib/computeStatus';
 import { getItemsForSeg, VISA_CONFIRM_DEF, SEG_LABELS, SIM_LABELS } from '@/lib/segRequirements';
 import {
   AuditLog,
   Case,
-  CaseStatus,
   CloseReason,
   FileMeta,
   Item,
@@ -19,8 +18,6 @@ import { DEMO_STUDENTS, generateId, nowStr } from '@/lib/utils';
 
 const WAIT_TIMER_MS = 60 * 1000; // 1 minute
 
-let caseCounter = 0;
-
 function buildInitialItems(seg: Seg, simType: SimType): Item[] {
   return getItemsForSeg(seg, simType).map((def) => ({
     ...def,
@@ -31,11 +28,11 @@ function buildInitialItems(seg: Seg, simType: SimType): Item[] {
   }));
 }
 
-function buildNewCase(seg: Seg, simType: SimType): Case {
-  caseCounter++;
-  const student = DEMO_STUDENTS[Math.floor(Math.random() * DEMO_STUDENTS.length)];
+function buildNewCase(seg: Seg, simType: SimType, counter: number): Case {
+  // Use counter % length for deterministic student selection (no Math.random during SSR)
+  const student = DEMO_STUDENTS[counter % DEMO_STUDENTS.length];
   return {
-    id: `C-2026-${String(caseCounter).padStart(5, '0')}`,
+    id: `C-2026-${String(counter).padStart(5, '0')}`,
     studentName: student.name,
     studentSchool: student.school,
     studentCountry: student.country,
@@ -45,21 +42,47 @@ function buildNewCase(seg: Seg, simType: SimType): Case {
     closed: false,
     rounds: 0,
     items: buildInitialItems(seg, simType),
-    queueEnteredAt: nowStr(),
+    queueEnteredAt: '—',      // set on client via useEffect
     assignedOperator: 'OP-001 (김지수)',
-    createdAt: nowStr(),
+    createdAt: '—',
   };
 }
 
 export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim') {
+  // per-instance counter in ref — avoids module-level state mismatch between SSR/CSR
+  const counterRef = useRef(1);
+
   const [chatCase, setChatCase] = useState<Case>(() => {
-    const c = buildNewCase(initialSeg, initialSimType);
+    // counter=1 here is deterministic — same value on server and client
+    const c = buildNewCase(initialSeg, initialSimType, 1);
     return { ...c, status: computeCaseStatus(c.items) };
   });
   const [messages, setMessages] = useState<Message[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const waitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [waitTimerActive, setWaitTimerActive] = useState(false);
+
+  // ── Client-only init (fix SSR hydration mismatch) ─────────────────────────
+  // Timestamps and initial messages are only set on the client after mount.
+  useEffect(() => {
+    const t = nowStr();
+    setChatCase((prev) => ({ ...prev, queueEnteredAt: t, createdAt: t }));
+    setAuditLogs([
+      { id: generateId('AL'), action: 'case.seg_assigned', actorRole: 'system', text: `Seg ${SEG_LABELS[initialSeg]} · ${SIM_LABELS[initialSimType]} 자동 부여 (신청 완료 시)`, createdAt: t },
+      { id: generateId('AL'), action: 'case.created', actorRole: 'system', text: `케이스 생성`, createdAt: t },
+    ]);
+    setTimeout(() => {
+      setChatCase((prev) => {
+        setMessages([
+          { id: generateId('M'), role: 'bot', type: 'text', text: `안녕하세요 ${prev.studentName}님! 👋\n모바일 개통 신청이 접수되었습니다.\n담당 오퍼레이터가 서류를 검토 중입니다. 잠시만 기다려주세요.`, createdAt: nowStr() },
+          { id: generateId('M'), role: 'system', type: 'system', text: `${SEG_LABELS[initialSeg]} · ${SIM_LABELS[initialSimType]} 분류 완료 · 큐 진입`, createdAt: nowStr() },
+        ]);
+        return prev;
+      });
+    }, 300);
+    // mounted
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally empty — run once on mount
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -120,31 +143,21 @@ export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim'
   const resetCase = useCallback(
     (seg: Seg, simType: SimType) => {
       stopWaitTimer();
-      const fresh = buildNewCase(seg, simType);
+      counterRef.current += 1;
+      const t = nowStr();
+      const fresh = buildNewCase(seg, simType, counterRef.current);
       const initStatus = computeCaseStatus(fresh.items);
-      setChatCase({ ...fresh, status: initStatus });
+      setChatCase({ ...fresh, status: initStatus, queueEnteredAt: t, createdAt: t });
       setMessages([]);
       setAuditLogs([
-        { id: generateId('AL'), action: 'case.seg_assigned', actorRole: 'system', text: `Seg ${SEG_LABELS[seg]} · ${SIM_LABELS[simType]} 자동 부여 (신청 완료 시)`, createdAt: nowStr() },
-        { id: generateId('AL'), action: 'case.created', actorRole: 'system', text: `케이스 생성 · ${fresh.id}`, createdAt: nowStr() },
+        { id: generateId('AL'), action: 'case.seg_assigned', actorRole: 'system', text: `Seg ${SEG_LABELS[seg]} · ${SIM_LABELS[simType]} 자동 부여 (신청 완료 시)`, createdAt: t },
+        { id: generateId('AL'), action: 'case.created', actorRole: 'system', text: `케이스 생성 · ${fresh.id}`, createdAt: t },
       ]);
 
       setTimeout(() => {
         setMessages([
-          {
-            id: generateId('M'),
-            role: 'bot',
-            type: 'text',
-            text: `안녕하세요 ${fresh.studentName}님! 👋\n모바일 개통 신청이 접수되었습니다.\n담당 오퍼레이터가 서류를 검토 중입니다. 잠시만 기다려주세요.`,
-            createdAt: nowStr(),
-          },
-          {
-            id: generateId('M'),
-            role: 'system',
-            type: 'system',
-            text: `${SEG_LABELS[seg]} · ${SIM_LABELS[simType]} 분류 완료 · 큐 진입`,
-            createdAt: nowStr(),
-          },
+          { id: generateId('M'), role: 'bot', type: 'text', text: `안녕하세요 ${fresh.studentName}님! 👋\n모바일 개통 신청이 접수되었습니다.\n담당 오퍼레이터가 서류를 검토 중입니다. 잠시만 기다려주세요.`, createdAt: nowStr() },
+          { id: generateId('M'), role: 'system', type: 'system', text: `${SEG_LABELS[seg]} · ${SIM_LABELS[simType]} 분류 완료 · 큐 진입`, createdAt: nowStr() },
         ]);
         startWaitTimer();
       }, 300);
