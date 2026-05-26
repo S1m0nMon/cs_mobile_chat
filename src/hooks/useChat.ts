@@ -431,10 +431,11 @@ export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim'
 
       const newItem: Item = {
         ...VISA_CONFIRM_DEF,
-        state: 'empty',
+        // Operator is actively requesting this doc → immediately supp_requested
+        state: 'supp_requested',
         value: null,
         file: null,
-        suppReason: null,
+        suppReason: '추가 서류 요청 · 자사 미확보로 직접 제출 필요',
         operatorAdded: true,
       };
       const items = [...prev.items, newItem];
@@ -476,7 +477,9 @@ export function useChat(initialSeg: Seg = 'S1', initialSimType: SimType = 'esim'
         const newItems: Item[] = newDefs.map((def) => {
           const existing = prev.items.find((i) => i.code === def.code);
           if (existing) return { ...def, state: existing.state, value: existing.value, file: existing.file, suppReason: existing.suppReason };
-          return { ...def, state: 'empty' as const, value: null, file: null, suppReason: null };
+          // First confirmation: student already submitted all docs via portal → start as submitted.
+          // Subsequent seg changes for new items default to empty (student hasn't submitted for the new seg).
+          return { ...def, state: isFirstConfirmation ? 'submitted' as const : 'empty' as const, value: null, file: null, suppReason: null };
         });
 
         // Preserve operator-added items (e.g. visa_confirm)

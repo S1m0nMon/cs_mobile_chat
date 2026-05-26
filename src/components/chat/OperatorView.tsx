@@ -320,7 +320,12 @@ export default function OperatorView({
                       </div>
                     )}
                     {!chatCase.closed && item.state === 'empty' && (
-                      <button disabled className="text-[11px] px-2 py-1 rounded border border-gray-200 text-gray-400 cursor-not-allowed">제출 대기</button>
+                      <button
+                        onClick={() => onRequestSupplement(item.code, '서류 미제출')}
+                        className="text-[11px] px-2 py-1 rounded border border-gray-300 bg-gray-50 text-gray-700 hover:bg-gray-100 font-medium whitespace-nowrap transition-colors"
+                      >
+                        📋 제출 요청
+                      </button>
                     )}
                     {!chatCase.closed && item.state === 'supp_requested' && (
                       <button disabled className="text-[11px] px-2 py-1 rounded border border-amber-200 text-amber-400 cursor-not-allowed">학생 대기 중</button>
@@ -334,33 +339,6 @@ export default function OperatorView({
             </div>
           )}
         </div>
-
-        {/* Free chat — unlocked when student requests consultant */}
-        {chatCase.consultantMode && !chatCase.closed && (
-          <div className="bg-white rounded-xl border-2 border-blue-200 p-4 shadow-sm">
-            <div className="flex items-center gap-2 mb-2.5">
-              <span className="text-base">💬</span>
-              <h3 className="text-xs font-bold text-blue-700 uppercase tracking-wide">상담사 직접 연결 중</h3>
-            </div>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={opText}
-                onChange={(e) => setOpText(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleSend(); }}
-                placeholder="자유 채팅 입력..."
-                className="flex-1 border border-blue-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 bg-blue-50/30"
-              />
-              <button
-                onClick={handleSend}
-                disabled={!opText.trim()}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-              >
-                전송
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* Consultant free chat — unlocked when student requests it */}
         {chatCase.consultantMode && !chatCase.closed && (
